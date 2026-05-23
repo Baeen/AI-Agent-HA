@@ -1,0 +1,1166 @@
+query:
+  name: "Query AI Agent with Home Assistant context"
+  description: "Run a custom AI prompt against your Home Assistant state dump."
+  fields:
+    prompt:
+      description: "The question or instruction to send to AI model."
+      example: "Turn on all the lights in the living room"
+    debug:
+      description: "Include a debug trace of the HA↔AI conversation (true/false)."
+      example: true
+      default: false
+    provider:
+      description: "The AI provider to use (openai, llama, gemini, openrouter, anthropic, alter, zai, local)"
+      example: "openai"
+      default: "openai"
+      selector:
+        select:
+          options:
+            - "openai"
+            - "llama"
+            - "gemini"
+            - "openrouter"
+            - "anthropic"
+            - "alter"
+            - "zai"
+            - "local"
+
+create_dashboard:
+  name: "Create Dashboard via AI Agent"
+  description: "Create a new Home Assistant dashboard using AI assistance."
+  fields:
+    dashboard_config:
+      description: "The dashboard configuration as a JSON object."
+      example: '{"title": "My Dashboard", "url_path": "my-dashboard", "views": []}'
+    provider:
+      description: "The AI provider to use (openai, llama, gemini, openrouter, anthropic, alter, zai, local)"
+      example: "openai"
+      default: "openai"
+      selector:
+        select:
+          options:
+            - "openai"
+            - "llama"
+            - "gemini"
+            - "openrouter"
+            - "anthropic"
+            - "alter"
+            - "zai"
+            - "local"
+
+create_automation:
+  name: "Create Automation via AI Agent"
+  description: "Create a new Home Assistant automation using AI assistance."
+  fields:
+    automation:
+      description: "The automation configuration as a JSON object."
+      example: '{"alias": "Turn off lights at 9 PM", "trigger": [{"platform": "time", "at": "21:00:00"}], "action": [{"service": "light.turn_off", "target": {"entity_id": "light.living_room"}}]}'
+    provider:
+      description: "The AI provider to use (openai, llama, gemini, openrouter, anthropic, alter, zai, local)"
+      example: "openai"
+      default: "openai"
+      selector:
+        select:
+          options:
+            - "openai"
+            - "llama"
+            - "gemini"
+            - "openrouter"
+            - "anthropic"
+            - "alter"
+            - "zai"
+            - "local"
+
+update_dashboard:
+  name: "Update Dashboard via AI Agent"
+  description: "Update an existing Home Assistant dashboard using AI assistance."
+  fields:
+    dashboard_url:
+      description: "The URL path of dashboard to update."
+      example: "my-dashboard"
+    dashboard_config:
+      description: "The updated dashboard configuration as a JSON object."
+      example: '{"title": "Updated Dashboard", "views": []}'
+    provider:
+      description: "The AI provider to use (openai, llama, gemini, openrouter, anthropic, alter, zai, local)"
+      example: "openai"
+      default: "openai"
+      selector:
+        select:
+          options:
+            - "openai"
+            - "llama"
+            - "gemini"
+            - "openrouter"
+            - "anthropic"
+            - "alter"
+            - "zai"
+            - "local"
+
+# Review YAML service
+review_yaml:
+  name: "Review YAML Configuration"
+  description: "Review a YAML configuration for security, validity, and best practices."
+  fields:
+    yaml_content:
+      description: "The YAML content to review."
+      example: |
+        alias: "Turn on lights at sunset"
+        trigger:
+          - platform: sun
+            event: sunset
+        action:
+          - service: light.turn_on
+            target:
+              entity_id: light.living_room
+    review_type:
+      description: "Type of YAML being reviewed."
+      example: "automation"
+      default: "automation"
+      selector:
+        select:
+          options:
+            - "automation"
+            - "dashboard"
+            - "script"
+            - "scene"
+    provider:
+      description: "The AI provider to use."
+      example: "openai"
+      default: "openai"
+      selector:
+        select:
+          options:
+            - "openai"
+            - "llama"
+            - "gemini"
+            - "openrouter"
+            - "anthropic"
+            - "alter"
+            - "zai"
+            - "local"
+
+# Analyze Logs service
+analyze_logs:
+  name: "Analyze Home Assistant Logs"
+  description: "Analyze recent Home Assistant logs for errors, warnings, and patterns."
+  fields:
+    hours:
+      description: "Number of hours of logs to analyze."
+      example: 24
+      default: 24
+      selector:
+        number:
+          min: 1
+          max: 720
+          step: 1
+    search_terms:
+      description: "Comma-separated list of terms to search for (optional)."
+      example: "timeout,error,connection"
+    generate_ai_summary:
+      description: "Whether to generate an AI summary of the analysis."
+      example: true
+      default: true
+      selector:
+        boolean:
+    provider:
+      description: "The AI provider to use."
+      example: "openai"
+      default: "openai"
+      selector:
+        select:
+          options:
+            - "openai"
+            - "llama"
+            - "gemini"
+            - "openrouter"
+            - "anthropic"
+            - "alter"
+            - "zai"
+            - "local"
+
+# Diagnose Error service
+diagnose_error:
+  name: "Diagnose Error"
+  description: "Diagnose a specific error and provide suggested fixes."
+  fields:
+    error_message:
+      description: "The error message to diagnose."
+      example: "Entity light.nonexistent is not valid"
+    context:
+      description: "Optional JSON context (e.g., entity_id, domain)."
+      example: '{"entity_id": "light.nonexistent"}'
+    provider:
+      description: "The AI provider to use."
+      example: "openai"
+      default: "openai"
+      selector:
+        select:
+          options:
+            - "openai"
+            - "llama"
+            - "gemini"
+            - "openrouter"
+            - "anthropic"
+            - "alter"
+            - "zai"
+            - "local"
+
+# Diagnose Multiple Errors service
+diagnose_multiple_errors:
+  name: "Diagnose Multiple Errors"
+  description: "Diagnose multiple errors and provide comprehensive analysis."
+  fields:
+    error_messages:
+      description: "JSON array of error messages to diagnose."
+      example: '["Entity light.nonexistent is not valid", "Timeout connecting to device"]'
+    provider:
+      description: "The AI provider to use."
+      example: "openai"
+      default: "openai"
+      selector:
+        select:
+          options:
+            - "openai"
+            - "llama"
+            - "gemini"
+            - "openrouter"
+            - "anthropic"
+            - "alter"
+            - "zai"
+            - "local"
+
+# Get Troubleshooting Guide service
+get_troubleshooting_guide:
+  name: "Get Troubleshooting Guide"
+  description: "Get a detailed troubleshooting guide for a specific error type."
+  fields:
+    error_type:
+      description: "The type of error to get troubleshooting guide for."
+      example: "Timeout"
+    provider:
+      description: "The AI provider to use."
+      example: "openai"
+      default: "openai"
+      selector:
+        select:
+          options:
+            - "openai"
+            - "llama"
+            - "gemini"
+            - "openrouter"
+            - "anthropic"
+            - "alter"
+            - "zai"
+            - "local"
+
+# Search Logs service
+search_logs:
+  name: "Search Home Assistant Logs"
+  description: "Search Home Assistant logs for a specific term."
+  fields:
+    search_term:
+      description: "The term to search for in logs."
+      example: "timeout"
+    hours:
+      description: "Number of hours of logs to search."
+      example: 24
+      default: 24
+      selector:
+        number:
+          min: 1
+          max: 720
+          step: 1
+    levels:
+      description: "Comma-separated list of log levels to include (ERROR, WARNING, INFO)."
+      example: "ERROR,WARNING"
+    provider:
+      description: "The AI provider to use."
+      example: "openai"
+      default: "openai"
+      selector:
+        select:
+          options:
+            - "openai"
+            - "llama"
+            - "gemini"
+            - "openrouter"
+            - "anthropic"
+            - "alter"
+            - "zai"
+            - "local"
+
+# Get Error Summary service
+get_error_summary:
+  name: "Get Error Summary"
+  description: "Get a quick summary of errors from Home Assistant logs."
+  fields:
+    hours:
+      description: "Number of hours of logs to analyze."
+      example: 24
+      default: 24
+      selector:
+        number:
+          min: 1
+          max: 720
+          step: 1
+    provider:
+      description: "The AI provider to use."
+      example: "openai"
+      default: "openai"
+      selector:
+        select:
+          options:
+            - "openai"
+            - "llama"
+            - "gemini"
+            - "openrouter"
+            - "anthropic"
+            - "alter"
+            - "zai"
+            - "local"
+
+# Review Automation service
+review_automation:
+  name: "Review Automation"
+  description: "Review an automation configuration specifically."
+  fields:
+    automation:
+      description: "The automation configuration as a dictionary."
+      example: '{"alias": "Test", "trigger": [...], "action": [...]}'
+    provider:
+      description: "The AI provider to use."
+      example: "openai"
+      default: "openai"
+      selector:
+        select:
+          options:
+            - "openai"
+            - "llama"
+            - "gemini"
+            - "openrouter"
+            - "anthropic"
+            - "alter"
+            - "zai"
+            - "local"
+
+# Get Documentation service
+get_documentation:
+  name: "Get Home Assistant Documentation"
+  description: "Get Home Assistant documentation for AI reference."
+  fields:
+    section:
+      description: "Specific section to retrieve (optional)."
+      example: "triggers"
+      selector:
+        text:
+    provider:
+      description: "The AI provider to use."
+      example: "openai"
+      default: "openai"
+      selector:
+        select:
+          options:
+            - "openai"
+            - "llama"
+            - "gemini"
+            - "openrouter"
+            - "anthropic"
+            - "alter"
+            - "zai"
+            - "local"
+
+# Create Automation with Review service
+create_automation_with_review:
+  name: "Create Automation with AI Review"
+  description: "Create an automation after AI review for security and validity."
+  fields:
+    automation:
+      description: "The automation configuration as a dictionary."
+      example: '{"alias": "Turn on lights at sunset", "trigger": [...], "action": [...]}'
+    require_review:
+      description: "Whether to require AI review before creation."
+      example: true
+      default: true
+      selector:
+        boolean:
+    provider:
+      description: "The AI provider to use."
+      example: "openai"
+      default: "openai"
+      selector:
+        select:
+          options:
+            - "openai"
+            - "llama"
+            - "gemini"
+            - "openrouter"
+            - "anthropic"
+            - "alter"
+            - "zai"
+            - "local"
+
+# Energy Optimization services
+
+# Analyze Energy Usage service
+analyze_energy_usage:
+  name: "Analyze Energy Usage"
+  description: "Analyze energy usage patterns and provide optimization insights."
+  fields:
+    time_period:
+      description: "Time period for energy analysis."
+      example: "month"
+      default: "month"
+      selector:
+        select:
+          options:
+            - "day"
+            - "week"
+            - "month"
+    provider:
+      description: "The AI provider to use."
+      example: "openai"
+      default: "openai"
+      selector:
+        select:
+          options:
+            - "openai"
+            - "llama"
+            - "gemini"
+            - "openrouter"
+            - "anthropic"
+            - "alter"
+            - "zai"
+            - "local"
+
+# Get Energy Suggestions service
+get_energy_suggestions:
+  name: "Get Energy Optimization Suggestions"
+  description: "Get personalized energy optimization suggestions based on your devices."
+  fields:
+    provider:
+      description: "The AI provider to use."
+      example: "openai"
+      default: "openai"
+      selector:
+        select:
+          options:
+            - "openai"
+            - "llama"
+            - "gemini"
+            - "openrouter"
+            - "anthropic"
+            - "alter"
+            - "zai"
+            - "local"
+
+# Get Device Energy Analysis service
+get_device_energy_analysis:
+  name: "Get Device Energy Analysis"
+  description: "Get per-device energy consumption analysis and automation potential."
+  fields:
+    domain:
+      description: "Optional domain filter (e.g., light, switch, climate)."
+      example: "light"
+    provider:
+      description: "The AI provider to use."
+      example: "openai"
+      default: "openai"
+      selector:
+        select:
+          options:
+            - "openai"
+            - "llama"
+            - "gemini"
+            - "openrouter"
+            - "anthropic"
+            - "alter"
+            - "zai"
+            - "local"
+
+# Troubleshoot Automation service
+troubleshoot_automation:
+  name: "Troubleshoot Automation"
+  description: "Troubleshoot an automation and identify issues."
+  fields:
+    automation:
+      description: "The automation configuration as a dictionary."
+      example: '{"alias": "Test", "trigger": [...], "action": [...]}'
+    provider:
+      description: "The AI provider to use."
+      example: "openai"
+      default: "openai"
+      selector:
+        select:
+          options:
+            - "openai"
+            - "llama"
+            - "gemini"
+            - "openrouter"
+            - "anthropic"
+            - "alter"
+            - "zai"
+            - "local"
+
+# Troubleshoot Multiple Automations service
+troubleshoot_multiple_automations:
+  name: "Troubleshoot Multiple Automations"
+  description: "Troubleshoot multiple automations and provide comprehensive analysis."
+  fields:
+    automations:
+      description: "JSON array of automation configurations to troubleshoot."
+      example: '[{"alias": "Auto 1", "trigger": [...], "action": [...]}, {"alias": "Auto 2", "trigger": [...], "action": [...]}]'
+    provider:
+      description: "The AI provider to use."
+      example: "openai"
+      default: "openai"
+      selector:
+        select:
+          options:
+            - "openai"
+            - "llama"
+            - "gemini"
+            - "openrouter"
+            - "anthropic"
+            - "alter"
+            - "zai"
+            - "local"
+
+# Discover Entities service
+discover_entities:
+  name: "Discover Entities"
+  description: "Discover all available entities in Home Assistant and categorize them by area, domain, and device class."
+  fields:
+    area_name:
+      description: "Optional area/room name to filter entities by."
+      example: "Living Room"
+    domain:
+      description: "Optional domain to filter entities by (e.g., 'light', 'sensor', 'switch')."
+      example: "light"
+    provider:
+      description: "The AI provider to use."
+      example: "openai"
+      default: "openai"
+      selector:
+        select:
+          options:
+            - "openai"
+            - "llama"
+            - "gemini"
+            - "openrouter"
+            - "anthropic"
+            - "alter"
+            - "zai"
+            - "local"
+
+# Get Entities by Room service
+get_entities_by_room:
+  name: "Get Entities by Room"
+  description: "Get all entities filtered by room/area."
+  fields:
+    room_name:
+      description: "Optional room name to filter by. If empty, returns all rooms."
+      example: "Living Room"
+    provider:
+      description: "The AI provider to use."
+      example: "openai"
+      default: "openai"
+      selector:
+        select:
+          options:
+            - "openai"
+            - "llama"
+            - "gemini"
+            - "openrouter"
+            - "anthropic"
+            - "alter"
+            - "zai"
+            - "local"
+
+# Get Entities by Function service
+get_entities_by_function:
+  name: "Get Entities by Function"
+  description: "Get entities by function (e.g., 'lights', 'sensors', 'motion_sensors')."
+  fields:
+    function:
+      description: "The function/category to filter by."
+      example: "motion_sensors"
+    provider:
+      description: "The AI provider to use."
+      example: "openai"
+      default: "openai"
+      selector:
+        select:
+          options:
+            - "openai"
+            - "llama"
+            - "gemini"
+            - "openrouter"
+            - "anthropic"
+            - "alter"
+            - "zai"
+            - "local"
+
+# Suggest Automations service
+suggest_automations:
+  name: "Suggest Automations"
+  description: "Get automation suggestions based on available devices and entities."
+  fields:
+    user_query:
+      description: "Optional user query for personalized suggestions."
+      example: "What automations can I set up with my motion sensors?"
+    provider:
+      description: "The AI provider to use."
+      example: "openai"
+      default: "openai"
+      selector:
+        select:
+          options:
+            - "openai"
+            - "llama"
+            - "gemini"
+            - "openrouter"
+            - "anthropic"
+            - "alter"
+            - "zai"
+            - "local"
+
+# Get Personalized Suggestions service
+get_personalized_suggestions:
+  name: "Get Personalized Automation Suggestions"
+  description: "Get personalized automation suggestions based on user's natural language query."
+  fields:
+    user_query:
+      description: "User's natural language query about automations."
+      example: "I have temperature sensors and a climate system. What can I automate?"
+    provider:
+      description: "The AI provider to use."
+      example: "openai"
+      default: "openai"
+      selector:
+        select:
+          options:
+            - "openai"
+            - "llama"
+            - "gemini"
+            - "openrouter"
+            - "anthropic"
+            - "alter"
+            - "zai"
+            - "local"
+
+# Get Automation Fix service
+get_automation_fix:
+  name: "Get Automation Fix"
+  description: "Get suggested fixes for automation issues."
+  fields:
+    automation:
+      description: "The automation configuration to fix."
+      example: '{"alias": "Test", "trigger": [...], "action": [...]}'
+    issue_type:
+      description: "Optional specific issue type to fix (e.g., 'Infinite Loop', 'Missing Alias')."
+      example: "Infinite Loop"
+    provider:
+      description: "The AI provider to use."
+      example: "openai"
+      default: "openai"
+      selector:
+        select:
+          options:
+            - "openai"
+            - "llama"
+            - "gemini"
+            - "openrouter"
+            - "anthropic"
+            - "alter"
+            - "zai"
+            - "local"
+
+# Configuration Validator services
+validate_configuration:
+  name: "Validate Home Assistant Configuration"
+  description: "Validate Home Assistant configuration files (configuration.yaml, automations.yaml, scripts.yaml, groups.yaml) for errors, deprecated options, and best practices."
+  fields:
+    config_type:
+      description: "Type of configuration to validate."
+      example: "all"
+      default: "all"
+      selector:
+        select:
+          options:
+            - "all"
+            - "configuration"
+            - "automations"
+            - "scripts"
+            - "groups"
+    provider:
+      description: "The AI provider to use."
+      example: "openai"
+      default: "openai"
+      selector:
+        select:
+          options:
+            - "openai"
+            - "llama"
+            - "gemini"
+            - "openrouter"
+            - "anthropic"
+            - "alter"
+            - "zai"
+            - "local"
+
+validate_automations:
+  name: "Validate Automations"
+  description: "Validate automation configurations passed as parameters."
+  fields:
+    automations:
+      description: "The automation configurations to validate as a JSON array."
+      example: '[{"alias": "Turn on lights", "trigger": [{"platform": "time", "at": "21:00:00"}], "action": [{"service": "light.turn_on"}]}]'
+    provider:
+      description: "The AI provider to use."
+      example: "openai"
+      default: "openai"
+      selector:
+        select:
+          options:
+            - "openai"
+            - "llama"
+            - "gemini"
+            - "openrouter"
+            - "anthropic"
+            - "alter"
+            - "zai"
+            - "local"
+
+validate_scripts:
+  name: "Validate Scripts"
+  description: "Validate script configurations passed as parameters."
+  fields:
+    scripts:
+      description: "The script configurations to validate as a JSON object."
+      example: '{"good_night": {"sequence": [{"service": "light.turn_off"}]}}'
+    provider:
+      description: "The AI provider to use."
+      example: "openai"
+      default: "openai"
+      selector:
+        select:
+          options:
+            - "openai"
+            - "llama"
+            - "gemini"
+            - "openrouter"
+            - "anthropic"
+            - "alter"
+            - "zai"
+            - "local"
+
+# Backup & Restore Advisor services
+get_backup_recommendation:
+  name: "Get Backup Recommendation"
+  description: "Get recommendations for what to backup before making changes to your Home Assistant configuration."
+  fields:
+    changes_description:
+      description: "Description of the changes you plan to make (e.g., 'adding new automations', 'updating integrations')."
+      example: "Adding new automation to turn on lights at sunset"
+    include_database:
+      description: "Whether to recommend backing up the database (default: true)."
+      example: true
+      default: true
+    provider:
+      description: "The AI provider to use."
+      example: "openai"
+      default: "openai"
+      selector:
+        select:
+          options:
+            - "openai"
+            - "llama"
+            - "gemini"
+            - "openrouter"
+            - "anthropic"
+            - "alter"
+            - "zai"
+            - "local"
+
+verify_after_changes:
+  name: "Verify After Changes"
+  description: "Verify your Home Assistant system is working correctly after making configuration changes."
+  fields:
+    changes_made:
+      description: "List of changes that were made, as a JSON array of change objects."
+      example: '[{"type": "automation_added", "file": "automations.yaml", "has_trigger": true}]'
+    current_config:
+      description: "Current Home Assistant configuration to verify (optional)."
+      example: '{"homeassistant": {}, "automation": []}'
+    provider:
+      description: "The AI provider to use."
+      example: "openai"
+      default: "openai"
+      selector:
+        select:
+          options:
+            - "openai"
+            - "llama"
+            - "gemini"
+            - "openrouter"
+            - "anthropic"
+            - "alter"
+            - "zai"
+            - "local"
+
+get_rollback_suggestion:
+  name: "Get Rollback Suggestion"
+  description: "Get step-by-step rollback suggestions if issues are detected after making changes."
+  fields:
+    issue:
+      description: "Description of the issue detected after making changes."
+      example: "Automations are not triggering after configuration update"
+    changes_made:
+      description: "List of changes that were made before the issue occurred."
+      example: '[{"type": "automation_modified", "file": "automations.yaml"}]'
+    backup_path:
+      description: "Path to the backup for restoration (optional)."
+      example: "/backup/ha_backup_20240101_120000"
+    provider:
+      description: "The AI provider to use."
+      example: "openai"
+      default: "openai"
+      selector:
+        select:
+          options:
+            - "openai"
+            - "llama"
+            - "gemini"
+            - "openrouter"
+            - "anthropic"
+            - "alter"
+            - "zai"
+            - "local"
+
+generate_backup_script:
+  name: "Generate Backup Script"
+  description: "Generate a shell script to backup your Home Assistant configuration files."
+  fields:
+    backup_path:
+      description: "Path where the backup should be stored (default: /backup)."
+      example: "/backup"
+      default: "/backup"
+    provider:
+      description: "The AI provider to use."
+      example: "openai"
+      default: "openai"
+      selector:
+        select:
+          options:
+            - "openai"
+            - "llama"
+            - "gemini"
+            - "openrouter"
+            - "anthropic"
+            - "alter"
+            - "zai"
+            - "local"
+
+get_improvement_suggestions:
+  name: "Get Configuration Improvement Suggestions"
+  description: "Get AI-powered improvement suggestions for Home Assistant configuration based on validation results."
+  fields:
+    config_type:
+      description: "Type of configuration to get suggestions for."
+      example: "all"
+      default: "all"
+      selector:
+        select:
+          options:
+            - "all"
+            - "configuration"
+            - "automations"
+            - "scripts"
+            - "groups"
+    provider:
+      description: "The AI provider to use."
+      example: "openai"
+      default: "openai"
+      selector:
+        select:
+          options:
+            - "openai"
+            - "llama"
+            - "gemini"
+            - "openrouter"
+            - "anthropic"
+            - "alter"
+            - "zai"
+            - "local"
+
+# Security Audit services
+security_audit:
+  name: "Security Audit"
+  description: "Run a comprehensive security audit on automations."
+  fields:
+    automations:
+      description: "List of automation configurations to audit."
+      example: '[{"alias": "Test Automation", "trigger": [{"platform": "state", "entity_id": "sensor.test"}], "action": [{"service": "light.turn_on", "target": {"entity_id": "light.test"}}]}]'
+    provider:
+      description: "The AI provider to use."
+      example: "openai"
+      default: "openai"
+      selector:
+        select:
+          options:
+            - "openai"
+            - "llama"
+            - "gemini"
+            - "openrouter"
+            - "anthropic"
+            - "alter"
+            - "zai"
+            - "local"
+
+check_credentials:
+  name: "Check Credentials"
+  description: "Check for exposed credentials in configurations."
+  fields:
+    configurations:
+      description: "List of configuration dictionaries to check for credentials."
+      example: '[{"alias": "My Automation", "action": [{"service": "notify.notify", "data": {"message": "password123"}}]}]'
+    provider:
+      description: "The AI provider to use."
+      example: "openai"
+      default: "openai"
+      selector:
+        select:
+          options:
+            - "openai"
+            - "llama"
+            - "gemini"
+            - "openrouter"
+            - "anthropic"
+            - "alter"
+            - "zai"
+            - "local"
+
+# Natural Language to Automation services
+convert_nl_to_automation:
+  name: "Convert Natural Language to Automation"
+  description: "Convert a natural language description into a Home Assistant automation configuration."
+  fields:
+    natural_language:
+      description: "The natural language description of the automation."
+      example: "Turn on the living room lights when I arrive home at 6 PM"
+    provider:
+      description: "The AI provider to use."
+      example: "openai"
+      default: "openai"
+      selector:
+        select:
+          options:
+            - "openai"
+            - "llama"
+            - "gemini"
+            - "openrouter"
+            - "anthropic"
+            - "alter"
+            - "zai"
+            - "local"
+
+create_automation_from_nl:
+  name: "Create Automation from Natural Language"
+  description: "Create a Home Assistant automation from a natural language description with optional review step."
+  fields:
+    natural_language:
+      description: "The natural language description of the automation."
+      example: "Turn on the living room lights when I arrive home at 6 PM"
+    require_review:
+      description: "If true, return the automation YAML for review before creating."
+      example: true
+      default: true
+      selector:
+        boolean:
+    provider:
+      description: "The AI provider to use."
+      example: "openai"
+      default: "openai"
+      selector:
+        select:
+          options:
+            - "openai"
+            - "llama"
+            - "gemini"
+            - "openrouter"
+            - "anthropic"
+            - "alter"
+            - "zai"
+            - "local"
+
+# Dashboard Advisor services
+analyze_dashboard:
+  name: "Analyze Dashboard Layout"
+  description: "Analyze a Home Assistant dashboard's layout and provide improvement suggestions."
+  fields:
+    dashboard_url:
+      description: "The URL path of the dashboard to analyze."
+      example: "my-dashboard"
+    provider:
+      description: "The AI provider to use."
+      example: "openai"
+      default: "openai"
+      selector:
+        select:
+          options:
+            - "openai"
+            - "llama"
+            - "gemini"
+            - "openrouter"
+            - "anthropic"
+            - "alter"
+            - "zai"
+            - "local"
+
+get_card_recommendations:
+  name: "Get Card Type Recommendations"
+  description: "Get recommended card types for entities in your Home Assistant."
+  fields:
+    entities:
+      description: "List of entities to get card recommendations for (as JSON array)."
+      example: '[{"entity_id": "light.living_room", "state": "on"}, {"entity_id": "sensor.temperature", "state": "72"}]'
+    provider:
+      description: "The AI provider to use."
+      example: "openai"
+      default: "openai"
+      selector:
+        select:
+          options:
+            - "openai"
+            - "llama"
+            - "gemini"
+            - "openrouter"
+            - "anthropic"
+            - "alter"
+            - "zai"
+            - "local"
+
+suggest_dashboard_layout:
+  name: "Suggest Dashboard Layout"
+  description: "Get a suggested dashboard layout for a specific use case."
+  fields:
+    dashboard_type:
+      description: "The type of dashboard to suggest."
+      example: "security"
+      default: "general"
+      selector:
+        select:
+          options:
+            - "general"
+            - "energy"
+            - "security"
+            - "climate"
+            - "room"
+            - "media"
+            - "automation"
+    provider:
+      description: "The AI provider to use."
+      example: "openai"
+      default: "openai"
+      selector:
+        select:
+          options:
+            - "openai"
+            - "llama"
+            - "gemini"
+            - "openrouter"
+            - "anthropic"
+            - "alter"
+            - "zai"
+            - "local"
+
+# Integration Guide services
+get_integration_guide:
+  name: "Get Integration Setup Guide"
+  description: "Get a step-by-step setup guide for a Home Assistant integration."
+  fields:
+    domain:
+      description: "The integration domain to get setup guide for (e.g., zha, mqtt, tuya)."
+      example: "zha"
+    provider:
+      description: "The AI provider to use."
+      example: "openai"
+      default: "openai"
+      selector:
+        select:
+          options:
+            - "openai"
+            - "llama"
+            - "gemini"
+            - "openrouter"
+            - "anthropic"
+            - "alter"
+            - "zai"
+            - "local"
+
+get_config_snippet:
+  name: "Get Configuration Snippet"
+  description: "Get a YAML configuration snippet for a Home Assistant integration."
+  fields:
+    domain:
+      description: "The integration domain to get configuration snippet for."
+      example: "mqtt"
+    provider:
+      description: "The AI provider to use."
+      example: "openai"
+      default: "openai"
+      selector:
+        select:
+          options:
+            - "openai"
+            - "llama"
+            - "gemini"
+            - "openrouter"
+            - "anthropic"
+            - "alter"
+            - "zai"
+            - "local"
+
+search_integrations:
+  name: "Search Integrations"
+  description: "Search for Home Assistant integrations by keyword."
+  fields:
+    query:
+      description: "Search query to find integrations (e.g., 'zigbee', 'light', 'spotify')."
+      example: "zigbee"
+    provider:
+      description: "The AI provider to use."
+      example: "openai"
+      default: "openai"
+      selector:
+        select:
+          options:
+            - "openai"
+            - "llama"
+            - "gemini"
+            - "openrouter"
+            - "anthropic"
+            - "alter"
+            - "zai"
+            - "local"
+
+get_security_score:
+  name: "Get Security Score"
+  description: "Get overall security score based on all automations."
+  fields:
+    provider:
+      description: "The AI provider to use."
+      example: "openai"
+      default: "openai"
+      selector:
+        select:
+          options:
+            - "openai"
+            - "llama"
+            - "gemini"
+            - "openrouter"
+            - "anthropic"
+            - "alter"
+            - "zai"
+            - "local"

@@ -1,0 +1,84 @@
+# Python cache files
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+pyproject.toml
+build/
+dist/
+wheels/
+*.egg-info/
+
+# Home Assistant specific
+home-assistant.log
+home-assistant_v2.log
+*.log
+home-assistant_state.log
+home-assistant_db
+home-assistant.db
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+*.sqlite-journal
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.settings/
+*.sublime-project
+*.sublime-workspace
+
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Test coverage files
+.coverage
+.coverage.*
+htmlcov/
+.pytest_cache/
+.tox/
+.coverage.json
+coverage.xml
+
+# Virtual environment files
+env/
+venv/
+ENV/
+.venv/
+env.bak/
+venv.bak/
+
+# Home Assistant custom components - local configuration
+!secrets.yaml
+secrets.yaml.bak
+
+# Logs
+*.log
+logs/
+*.log.*
+
+# Temporary files
+*.tmp
+*.temp
+tmp/
+temp/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
