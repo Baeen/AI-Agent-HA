@@ -1702,6 +1702,75 @@ class AiAgentHaAgent:
     def _set_cached_data(self, key: str, data: Any) -> None:
         """Store data in cache with timestamp."""
         self._cache[key] = (time.time(), data)
+    
+    def _generate_fallback_response(self) -> str:
+        """Generate a fallback response when the AI returns an empty final_response.
+        
+        This method analyzes the conversation history to generate a meaningful response
+        based on the actions that were taken.
+        
+        Returns:
+            A string containing the fallback response message.
+        """
+        _LOGGER.debug("Generating fallback response from conversation history")
+        
+        # Look at the conversation history to find what actions were taken
+        last_service_calls = []
+        for msg in reversed(self.conversation_history):
+            content = msg.get("content", "")
+            if msg.get("role") == "assistant" and content.startswith("{"):
+                try:
+                    data = json.loads(content)
+                    if data.get("request_type") == "call_service":
+                        domain = data.get("domain", "")
+                        service = data.get("service", "")
+                        target = data.get("target", {})
+                        last_service_calls.append({
+                            "domain": domain,
+                            "service": service,
+                            "target": target,
+                        })
+                except (json.JSONDecodeError, ValueError):
+                    pass
+        
+        if not last_service_calls:
+            return "I processed your request but encountered an issue generating a response. Please try again."
+        
+        # Generate a meaningful response based on the service calls
+        responses = []
+        for call in last_service_calls:
+            domain = call["domain"]
+            service = call["service"]
+            target = call["target"]
+            
+            # Generate human-readable description
+            if domain == "homeassistant" and service == "rename_entity":
+                new_entity_id = target.get("entity_id", "") if isinstance(target, dict) else ""
+                if new_entity_id:
+                    responses.append(f"I renamed the device to '{new_entity_id}'.")
+                else:
+                    responses.append("I renamed the device.")
+            elif domain == "homeassistant" and service == "turn_on":
+                if isinstance(target, dict) and "entity_id" in target:
+                    responses.append(f"I turned on {target['entity_id']}.")
+                else:
+                    responses.append("I turned on the device.")
+            elif domain == "homeassistant" and service == "turn_off":
+                if isinstance(target, dict) and "entity_id" in target:
+                    responses.append(f"I turned off {target['entity_id']}.")
+                else:
+                    responses.append("I turned off the device.")
+            elif domain == "homeassistant" and service == "call_service":
+                responses.append("I executed the requested service call.")
+            else:
+                responses.append(f"I executed {domain}.{service}.")
+        
+        if len(responses) == 1:
+            return responses[0]
+        elif len(responses) == 2:
+            return f"{responses[0]} {responses[1]}"
+        else:
+            return f"I completed {len(responses)} actions: {'; '.join(responses[:-1])}. {responses[-1]}"
 
     def _sanitize_automation_config(self, config: Dict[str, Any]) -> Dict[str, Any]:
         """Sanitize automation configuration to prevent injection attacks."""
@@ -3712,13 +3781,28 @@ Then restart Home Assistant to see your new dashboard in the sidebar."""
                             )
 
                             # Return final response
-                            _LOGGER.debug(
-                                "Received final response: %s",
-                                response_data.get("response"),
+                            final_response_text = response_data.get("response", "")
+                            _LOGGER.info(
+                                "=== FINAL RESPONSE DEBUG === response_type=%s, response_length=%d, response_preview=%s, full_response_data=%s",
+                                type(final_response_text).__name__,
+                                len(final_response_text) if final_response_text else 0,
+                                repr(final_response_text[:200]) if final_response_text else "None",
+                                json.dumps(response_data, default=str),
                             )
+                            if not final_response_text or final_response_text.strip() == "":
+                                _LOGGER.warning(
+                                    "WARNING: AI returned empty final_response! Generating fallback message. Full response_data: %s",
+                                    json.dumps(response_data, default=str),
+                                )
+                                # Generate a fallback message based on conversation history
+                                fallback_message = self._generate_fallback_response()
+                                final_response_text = fallback_message
+                                _LOGGER.info(
+                                    "Generated fallback response: %s", fallback_message
+                                )
                             result = {
                                 "success": True,
-                                "answer": response_data.get("response", ""),
+                                "answer": final_response_text,
                             }
                             result = _with_debug(result)
                             self._set_cached_data(cache_key, result)
@@ -4056,9 +4140,11 @@ Then restart Home Assistant to see your new dashboard in the sidebar."""
                                     {"success": False, "error": data["error"]}
                                 )
 
-                            _LOGGER.debug(
-                                "Service call completed: %s",
-                                json.dumps(data, default=str),
+                            _LOGGER.info(
+                                "=== SERVICE CALL DEBUG === domain=%s, service=%s, target=%s, result_success=%s, result_data=%s",
+                                domain, service, json.dumps(target, default=str),
+                                data.get("success", "N/A") if isinstance(data, dict) else "N/A",
+                                json.dumps(data, default=str)[:500] if data else "None",
                             )
 
                             # Add data to conversation as a user message (not system to avoid overwriting system prompt in Anthropic API)
@@ -4067,6 +4153,11 @@ Then restart Home Assistant to see your new dashboard in the sidebar."""
                                     "role": "user",
                                     "content": json.dumps({"data": data}, default=str),
                                 }
+                            )
+                            _LOGGER.info(
+                                "=== LOOP CONTINUE DEBUG === iteration=%d, conversation_history_length=%d, last_3_history_items=%s",
+                                iteration, len(self.conversation_history),
+                                json.dumps(self.conversation_history[-3:], default=str),
                             )
                             # Go to next iteration to continue the loop
                             continue
@@ -4233,6 +4324,12 @@ Then restart Home Assistant to see your new dashboard in the sidebar."""
             result = _with_debug(result)
             self._set_cached_data(cache_key, result)
             return result
+            
+        except Exception as e:
+            _LOGGER.exception("Error in process_query: %s", str(e))
+            return _with_debug(
+                {"success": False, "error": f"Error in process_query: {str(e)}"}
+            )
 
         except Exception as e:
             _LOGGER.exception("Error in process_query: %s", str(e))

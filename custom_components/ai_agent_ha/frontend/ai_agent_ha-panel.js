@@ -1642,8 +1642,20 @@ class AiAgentHaPanel extends LitElement {
         this._thinkingExpanded = true;
       }
     if (event.data.success) {
+      // DEBUG: Log the full response data for debugging empty responses
+      console.debug("=== FRONTEND RESPONSE DEBUG === success=%s, answer=%s, answer_length=%d, answer_preview=%s, full_event_data=%s",
+        event.data.success,
+        typeof event.data.answer,
+        event.data.answer ? event.data.answer.length : 0,
+        event.data.answer ? JSON.stringify(event.data.answer.toString().slice(0, 200)) : "None",
+        JSON.stringify(event.data, (key, value) => key === 'debug' ? '[debug omitted]' : value, 2)
+      );
       // Check if the answer is empty
       if (!event.data.answer || event.data.answer.trim() === '') {
+        console.error("=== EMPTY RESPONSE DEBUG === event.data=%s, answer_type=%s, answer_value=%s",
+          JSON.stringify(event.data, (key, value) => key === 'debug' ? '[debug omitted]' : value, 2),
+          typeof event.data.answer,
+          event.data.answer);
         console.warn("AI agent returned empty response");
         this._messages = [
           ...this._messages,
