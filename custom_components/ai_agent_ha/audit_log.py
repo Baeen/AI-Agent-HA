@@ -209,9 +209,16 @@ class AuditLogManager:
             atomic_writes=True,
         )
         
-        # Load persisted logs if enabled
+        # Load persisted logs if enabled (defer to avoid Store.data not being ready)
         if persistence_enabled:
-            self._load_logs()
+            # Defer loading to after initialization completes
+            import asyncio
+            try:
+                # Try to schedule async load if event loop is running
+                asyncio.create_task(self._async_load_logs())
+            except RuntimeError:
+                # No event loop running, skip auto-load
+                _LOGGER.debug("No event loop available for async log loading")
     
     def log(
         self,
@@ -341,8 +348,32 @@ class AuditLogManager:
         except Exception as e:
             _LOGGER.error("Error saving audit logs: %s", e)
     
+    async def _async_load_logs(self) -> None:
+        """Asynchronously load logs from storage.
+        
+        This method should be called after initialization to avoid
+        accessing Store.data before it's ready.
+        """
+        try:
+            # Get stored data asynchronously
+            stored_data = await self._store.async_load()
+            if stored_data:
+                self._logs = [AuditLogEntry.from_dict(data) for data in stored_data]
+                self._entry_counter = len(self._logs)
+                _LOGGER.info(
+                    "Loaded %d audit log entries from storage", len(self._logs)
+                )
+            else:
+                _LOGGER.debug("No persisted audit logs found")
+        except Exception as e:
+            _LOGGER.error("Error loading audit logs: %s", e)
+    
     def _load_logs(self) -> None:
-        """Load logs from storage."""
+        """Load logs from storage (synchronous, deprecated).
+        
+        Deprecated: Use _async_load_logs() instead.
+        This method is kept for backward compatibility.
+        """
         try:
             stored_data = self._store.data
             if stored_data:
