@@ -2360,33 +2360,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             )
 
     # Register WebSocket commands
-    hass.components.websocket_api.async_register_command(
-        "ai_agent_ha/get_conversations", async_handle_ws_get_conversations
-    )
-    hass.components.websocket_api.async_register_command(
-        "ai_agent_ha/get_conversation", async_handle_ws_get_conversation
-    )
-    hass.components.websocket_api.async_register_command(
-        "ai_agent_ha/save_conversation", async_handle_ws_save_conversation
-    )
-    hass.components.websocket_api.async_register_command(
-        "ai_agent_ha/delete_conversation", async_handle_ws_delete_conversation
-    )
-    hass.components.websocket_api.async_register_command(
-        "ai_agent_ha/rename_conversation", async_handle_ws_rename_conversation
-    )
-    hass.components.websocket_api.async_register_command(
-        "ai_agent_ha/export_conversation", async_handle_ws_export_conversation
-    )
-    hass.components.websocket_api.async_register_command(
-        "ai_agent_ha/pin_conversation", async_handle_ws_pin_conversation
-    )
-    hass.components.websocket_api.async_register_command(
-        "ai_agent_ha/add_tag", async_handle_ws_add_tag
-    )
-    hass.components.websocket_api.async_register_command(
-        "ai_agent_ha/search_conversations", async_handle_ws_search_conversations
-    )
+    from homeassistant.components.websocket_api import async_register_command
+    
+    async_register_command(hass, "ai_agent_ha/get_conversations", async_handle_ws_get_conversations)
+    async_register_command(hass, "ai_agent_ha/get_conversation", async_handle_ws_get_conversation)
+    async_register_command(hass, "ai_agent_ha/save_conversation", async_handle_ws_save_conversation)
+    async_register_command(hass, "ai_agent_ha/delete_conversation", async_handle_ws_delete_conversation)
+    async_register_command(hass, "ai_agent_ha/rename_conversation", async_handle_ws_rename_conversation)
+    async_register_command(hass, "ai_agent_ha/export_conversation", async_handle_ws_export_conversation)
+    async_register_command(hass, "ai_agent_ha/pin_conversation", async_handle_ws_pin_conversation)
+    async_register_command(hass, "ai_agent_ha/add_tag", async_handle_ws_add_tag)
+    async_register_command(hass, "ai_agent_ha/search_conversations", async_handle_ws_search_conversations)
 
     # Permission System schemas
     APPROVE_PERMISSION_SCHEMA = vol.Schema({
@@ -2587,16 +2571,8 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.services.async_remove(DOMAIN, "pin_conversation")
     hass.services.async_remove(DOMAIN, "add_tag")
     
-    # Remove Chat History WebSocket commands
-    hass.components.websocket_api.async_unregister_command("ai_agent_ha/get_conversations")
-    hass.components.websocket_api.async_unregister_command("ai_agent_ha/get_conversation")
-    hass.components.websocket_api.async_unregister_command("ai_agent_ha/save_conversation")
-    hass.components.websocket_api.async_unregister_command("ai_agent_ha/delete_conversation")
-    hass.components.websocket_api.async_unregister_command("ai_agent_ha/rename_conversation")
-    hass.components.websocket_api.async_unregister_command("ai_agent_ha/export_conversation")
-    hass.components.websocket_api.async_unregister_command("ai_agent_ha/pin_conversation")
-    hass.components.websocket_api.async_unregister_command("ai_agent_ha/add_tag")
-    hass.components.websocket_api.async_unregister_command("ai_agent_ha/search_conversations")
+    # Remove Chat History WebSocket commands (no-op if not registered, so safe to call)
+    # WebSocket commands are automatically unregistered when the integration is unloaded
     
     hass.services.async_remove(DOMAIN, "approve_permission")
     hass.services.async_remove(DOMAIN, "deny_permission")
