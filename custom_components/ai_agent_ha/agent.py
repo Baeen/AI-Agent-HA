@@ -1812,6 +1812,18 @@ class AiAgentHaAgent:
         
         return "I processed your request but encountered an issue generating a response. Please try again."
     
+    async def _get_fallback_response(self) -> str:
+        """Async fallback response for error recovery.
+        
+        This method provides a fallback when AI response calls fail.
+        It's designed to be used with the ErrorRecoveryManager.
+        
+        Returns:
+            A fallback response string.
+        """
+        _LOGGER.warning("Using error recovery fallback response")
+        return "Sorry, I encountered a temporary issue processing your request. Please try again in a moment."
+    
     def _generate_fallback_from_history(self) -> str:
         """Generate fallback response by analyzing conversation history.
         
@@ -1939,9 +1951,18 @@ class AiAgentHaAgent:
                     sanitized[key] = value
         return sanitized
 
+    # === Integration 4a: Performance Module - Data Cache ===
     async def get_entity_state(self, entity_id: str) -> Dict[str, Any]:
-        """Get the state of a specific entity."""
+        """Get the state of a specific entity with caching."""
         try:
+            # === Integration 4: Performance Modules ===
+            # Check cache first before fetching
+            cache_key = f"entity_state_{entity_id}"
+            cached = self.data_cache.get(cache_key)
+            if cached is not None:
+                _LOGGER.debug("Data Cache: Cache hit for entity state: %s", entity_id)
+                return cached
+            
             _LOGGER.debug("Requesting entity state for: %s", entity_id)
             state = self.hass.states.get(entity_id)
             if not state:
@@ -2068,14 +2089,25 @@ class AiAgentHaAgent:
                 area_id,
                 area_name,
             )
+            # Cache the result for future requests (30s TTL for entity states)
+            self.data_cache.set(cache_key, result, ttl=30.0)
+            _LOGGER.debug("Data Cache: Cached entity state for %s (30s TTL)", entity_id)
             return result
         except Exception as e:
             _LOGGER.exception("Error getting entity state: %s", str(e))
             return {"error": f"Error getting entity state: {str(e)}"}
 
+    # === Integration 4b: Performance Module - Data Cache for get_entities_by_domain ===
     async def get_entities_by_domain(self, domain: str) -> List[Dict[str, Any]]:
-        """Get all entities for a specific domain."""
+        """Get all entities for a specific domain with caching."""
         try:
+            # Check cache first
+            cache_key = f"entities_by_domain_{domain}"
+            cached = self.data_cache.get(cache_key)
+            if cached is not None:
+                _LOGGER.debug("Data Cache: Cache hit for domain entities: %s", domain)
+                return cached
+            
             _LOGGER.debug("Requesting all entities for domain: %s", domain)
             states = [
                 state
@@ -2083,7 +2115,12 @@ class AiAgentHaAgent:
                 if state.entity_id.startswith(f"{domain}.")
             ]
             _LOGGER.debug("Found %d entities in domain %s", len(states), domain)
-            return [await self.get_entity_state(state.entity_id) for state in states]
+            result = [await self.get_entity_state(state.entity_id) for state in states]
+            
+            # Cache the result for future requests (60s TTL for entity lists)
+            self.data_cache.set(cache_key, result, ttl=60.0)
+            _LOGGER.debug("Data Cache: Cached entities for domain %s (%d entities, 60s TTL)", domain, len(result))
+            return result
         except Exception as e:
             _LOGGER.exception("Error getting entities by domain: %s", str(e))
             return [{"error": f"Error getting entities for domain {domain}: {str(e)}"}]
@@ -3689,11 +3726,26 @@ Then restart Home Assistant to see your new dashboard in the sidebar."""
                 try:
                     # Get AI response (use multimodal method if images are present)
                     _LOGGER.debug("Requesting response from AI provider")
+                    # === Integration 2: Error Recovery Manager ===
+                    # Wrap AI response calls with circuit breaker and retry logic
+                    ai_provider = selected_provider or self.config.get("ai_provider", "openai")
                     if image_attachments:
                         _LOGGER.debug("Using multimodal AI response with %d images", len(image_attachments))
-                        response = await self._get_ai_response_with_images(user_query, image_attachments)
+                        _LOGGER.debug("Error Recovery Manager: Using circuit breaker for provider '%s'", ai_provider)
+                        response = await self.error_recovery_manager.execute_with_recovery(
+                            self._get_ai_response_with_images,
+                            user_query,
+                            image_attachments,
+                            recovery_action=lambda: self._get_fallback_response(),
+                            provider=ai_provider,
+                        )
                     else:
-                        response = await self._get_ai_response()
+                        _LOGGER.debug("Error Recovery Manager: Using circuit breaker for provider '%s'", ai_provider)
+                        response = await self.error_recovery_manager.execute_with_recovery(
+                            self._get_ai_response,
+                            recovery_action=self._get_fallback_response,
+                            provider=ai_provider,
+                        )
                     _LOGGER.debug("Received response from AI provider: %s", response)
 
                     try:
@@ -3727,12 +3779,21 @@ Then restart Home Assistant to see your new dashboard in the sidebar."""
                             "Cleaned response last 100 chars: %s", response_clean[-100:]
                         )
 
-                        # Simple strategy: try to parse the cleaned response directly
+                        # === Integration 1: Response Validator ===
+                        # Validate and potentially auto-fix the JSON response
+                        _LOGGER.debug("Running ResponseValidator on AI response")
                         response_data = None
                         try:
-                            _LOGGER.debug("Attempting basic JSON parse...")
-                            response_data = json.loads(response_clean)
-                            _LOGGER.debug("Basic JSON parse succeeded!")
+                            validation_result = self.response_validator.validate_json_response(response_clean)
+                            if validation_result.is_valid:
+                                response_data = validation_result.validated_data
+                                _LOGGER.debug("ResponseValidator: JSON valid, parsed successfully")
+                                if validation_result.sanitized:
+                                    _LOGGER.info("ResponseValidator: JSON was auto-fixed, warnings: %s", validation_result.warnings)
+                                    for w in validation_result.warnings:
+                                        _LOGGER.debug("ResponseValidator warning: %s", w)
+                            else:
+                                _LOGGER.warning("ResponseValidator: JSON invalid, errors: %s", validation_result.errors)
                         except json.JSONDecodeError as e:
                             _LOGGER.warning("Basic JSON parse failed: %s", str(e))
                             _LOGGER.debug("JSON error position: %d", e.pos)
@@ -4416,23 +4477,56 @@ Then restart Home Assistant to see your new dashboard in the sidebar."""
                                     "request_type": "permission_request",
                                 })
 
-                            # Call the service
-                            data = await self.call_service(
-                                domain, service, target, service_data
+                            # === Integration 3: Action Executor ===
+                            # Route service calls through ActionExecutor for validation and error handling
+                            _LOGGER.debug("Action Executor: Executing action %s.%s", domain, service)
+                            
+                            # Build action dictionary for ActionExecutor
+                            action = {
+                                "domain": domain,
+                                "service": service,
+                                "target": target,
+                                "service_data": service_data,
+                            }
+                            
+                            # Validate service call structure using ResponseValidator
+                            service_validation = self.response_validator.validate_service_call(action)
+                            if not service_validation.is_valid:
+                                _LOGGER.warning("Action Executor: Service call validation failed: %s", service_validation.errors)
+                                return _with_debug({
+                                    "success": False,
+                                    "error": f"Invalid service call structure: {', '.join(service_validation.errors)}",
+                                })
+                            elif service_validation.warnings:
+                                for w in service_validation.warnings:
+                                    _LOGGER.debug("Action Executor: Service call warning: %s", w)
+                            
+                            # Execute action through ActionExecutor
+                            action_result = await self.action_executor.execute_action(
+                                action,
+                                action_id=f"query_{user_query[:20].replace(' ', '_')}_{domain}_{service}",
                             )
-
-                            # Check if service call resulted in an error
-                            if isinstance(data, dict) and "error" in data:
-                                return _with_debug(
-                                    {"success": False, "error": data["error"]}
+                            
+                            if action_result.success:
+                                data = action_result.result or {
+                                    "success": True,
+                                    "service": f"{domain}.{service}",
+                                    "message": f"Successfully called {domain}.{service}",
+                                }
+                                _LOGGER.info(
+                                    "Action Executor: Action %s.%s executed successfully in %.2fs",
+                                    domain,
+                                    service,
+                                    action_result.execution_time,
                                 )
-
-                            _LOGGER.info(
-                                "=== SERVICE CALL DEBUG === domain=%s, service=%s, target=%s, result_success=%s, result_data=%s",
-                                domain, service, json.dumps(target, default=str),
-                                data.get("success", "N/A") if isinstance(data, dict) else "N/A",
-                                json.dumps(data, default=str)[:500] if data else "None",
-                            )
+                            else:
+                                _LOGGER.error(
+                                    "Action Executor: Action %s.%s failed: %s",
+                                    domain,
+                                    service,
+                                    action_result.error,
+                                )
+                                data = {"error": f"Action execution failed: {action_result.error}"}
                             
                             # Track action details for frontend display
                             action_detail = {
