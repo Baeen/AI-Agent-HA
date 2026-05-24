@@ -1367,7 +1367,6 @@ clear_audit_logs:
   name: "Clear Audit Logs"
   description: "Clear all audit log entries."
   fields: {}
-
 clear_old_audit_logs:
   name: "Clear Old Audit Logs"
   description: "Clear audit log entries older than specified days."
@@ -1376,3 +1375,37 @@ clear_old_audit_logs:
       description: "Number of days to retain."
       example: 30
       default: 30
+
+# Voice interaction services
+
+voice_query:
+  name: "Process Voice Command"
+  description: "Process a voice command with optional TTS response."
+  fields:
+    text:
+      description: "The voice command text to process."
+      example: "Turn on the living room light"
+    response_tts:
+      description: "Whether to convert the AI response to speech (default: true)."
+      example: true
+      default: true
+    tts_engine:
+      description: "Optional TTS engine to use (empty = default engine)."
+      example: "google_translate"
+    tts_voice:
+      description: "Optional voice to use for TTS (empty = default voice)."
+      example: "en-US-Standard-C"
+
+get_tts_engines:
+  name: "Get Available TTS Engines"
+  description: "Get list of available TTS engines."
+  fields: {}
+
+get_tts_voices:
+  name: "Get Available TTS Voices"
+  description: "Get available voices for a specific TTS engine."
+  fields:
+    engine:
+      description: "The TTS engine name."
+      example: "google_translate"
+

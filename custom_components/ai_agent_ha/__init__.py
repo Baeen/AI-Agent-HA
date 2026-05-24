@@ -14,9 +14,20 @@ from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.typing import ConfigType
 
 from .agent import AiAgentHaAgent
-from .const import DOMAIN, CONF_AUDIT_LOG_ENABLED, CONF_AUDIT_LOG_RETENTION_DAYS, CONF_AUDIT_LOG_MAX_ENTRIES, CONF_AUDIT_LOG_PERSISTENCE_ENABLED
+from .const import (
+    DOMAIN,
+    CONF_AUDIT_LOG_ENABLED,
+    CONF_AUDIT_LOG_RETENTION_DAYS,
+    CONF_AUDIT_LOG_MAX_ENTRIES,
+    CONF_AUDIT_LOG_PERSISTENCE_ENABLED,
+    CONF_VOICE_ENABLED,
+    CONF_VOICE_TTS_ENABLED,
+    CONF_VOICE_TTS_ENGINE,
+    CONF_VOICE_TTS_VOICE,
+)
 from .chat_history import ChatHistoryManager
 from .audit_log import AuditLogManager, RetentionPolicy
+from .voice_handler import VoiceHandler, VoiceQueryResult
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -401,6 +412,22 @@ CLEAR_OLD_AUDIT_LOGS_SCHEMA = vol.Schema(
     }
 )
 
+# Voice interaction service schemas
+VOICE_QUERY_SCHEMA = vol.Schema(
+    {
+        vol.Required("text"): cv.string,
+        vol.Optional("response_tts", default=True): cv.boolean,
+        vol.Optional("tts_engine"): cv.string,
+        vol.Optional("tts_voice"): cv.string,
+    }
+)
+
+GET_TTS_VOICES_SCHEMA = vol.Schema(
+    {
+        vol.Required("engine"): cv.string,
+    }
+)
+
 
 async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Migrate old config entries to new version."""
@@ -524,6 +551,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             else:
                 hass.data[DOMAIN]["audit_log_manager"] = None
                 _LOGGER.info("Audit log disabled")
+
+        # Initialize voice handler
+        if "voice_handler" not in hass.data[DOMAIN]:
+            hass.data[DOMAIN]["voice_handler"] = VoiceHandler(hass, hass.data[DOMAIN]["agents"][provider])
+            _LOGGER.info("Voice handler initialized successfully")
 
         _LOGGER.info("Successfully set up AI Agent HA for provider: %s", provider)
 
@@ -2630,6 +2662,105 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             _LOGGER.error("Error clearing audit logs: %s", str(e))
             return {"success": False, "error": str(e)}
 
+    # Voice interaction service handlers
+    async def async_handle_voice_query(call):
+        """Handle the voice_query service call."""
+        try:
+            # Get the voice handler
+            voice_handler = hass.data[DOMAIN].get("voice_handler")
+            if voice_handler is None:
+                _LOGGER.error("Voice handler not initialized")
+                return {
+                    "success": False,
+                    "error": "Voice handler not initialized",
+                }
+
+            # Extract call data
+            text = call.data.get("text", "")
+            response_tts = call.data.get("response_tts", True)
+            tts_engine = call.data.get("tts_engine", "")
+            tts_voice = call.data.get("tts_voice", "")
+
+            _LOGGER.info("Processing voice query: %s", text[:50])
+
+            # Process the voice command
+            result = await voice_handler.process_voice_command(
+                text=text,
+                response_tts=response_tts,
+                tts_engine=tts_engine,
+                tts_voice=tts_voice,
+            )
+
+            return result.to_dict()
+
+        except Exception as e:
+            _LOGGER.exception("Error processing voice query: %s", str(e))
+            return {
+                "success": False,
+                "error": f"Voice query failed: {str(e)}",
+            }
+
+    async def async_handle_get_tts_engines(call):
+        """Handle the get_tts_engines service call."""
+        try:
+            # Get the voice handler
+            voice_handler = hass.data[DOMAIN].get("voice_handler")
+            if voice_handler is None:
+                _LOGGER.error("Voice handler not initialized")
+                return {
+                    "success": False,
+                    "error": "Voice handler not initialized",
+                }
+
+            # Get available TTS engines
+            engines = await voice_handler.get_available_tts_engines()
+            return {
+                "success": True,
+                "engines": engines,
+            }
+
+        except Exception as e:
+            _LOGGER.exception("Error getting TTS engines: %s", str(e))
+            return {
+                "success": False,
+                "error": f"Failed to get TTS engines: {str(e)}",
+            }
+
+    async def async_handle_get_tts_voices(call):
+        """Handle the get_tts_voices service call."""
+        try:
+            # Get the voice handler
+            voice_handler = hass.data[DOMAIN].get("voice_handler")
+            if voice_handler is None:
+                _LOGGER.error("Voice handler not initialized")
+                return {
+                    "success": False,
+                    "error": "Voice handler not initialized",
+                }
+
+            # Get the engine name
+            engine = call.data.get("engine", "")
+            if not engine:
+                return {
+                    "success": False,
+                    "error": "Engine parameter is required",
+                }
+
+            # Get available voices for the engine
+            voices = await voice_handler.get_available_tts_voices(engine)
+            return {
+                "success": True,
+                "engine": engine,
+                "voices": voices,
+            }
+
+        except Exception as e:
+            _LOGGER.exception("Error getting TTS voices: %s", str(e))
+            return {
+                "success": False,
+                "error": f"Failed to get TTS voices: {str(e)}",
+            }
+
     async def async_handle_clear_old_audit_logs(call):
         """Handle the clear_old_audit_logs service call."""
         try:
@@ -2656,6 +2787,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.services.async_register(DOMAIN, "export_audit_logs", async_handle_export_audit_logs, schema=EXPORT_AUDIT_LOGS_SCHEMA)
     hass.services.async_register(DOMAIN, "clear_audit_logs", async_handle_clear_audit_logs, schema=CLEAR_AUDIT_LOGS_SCHEMA)
     hass.services.async_register(DOMAIN, "clear_old_audit_logs", async_handle_clear_old_audit_logs, schema=CLEAR_OLD_AUDIT_LOGS_SCHEMA)
+
+    # Register voice interaction services
+    hass.services.async_register(DOMAIN, "voice_query", async_handle_voice_query, schema=VOICE_QUERY_SCHEMA)
+    hass.services.async_register(DOMAIN, "get_tts_engines", async_handle_get_tts_engines)
+    hass.services.async_register(DOMAIN, "get_tts_voices", async_handle_get_tts_voices, schema=GET_TTS_VOICES_SCHEMA)
 
     # Register static path for frontend
     await hass.http.async_register_static_paths(

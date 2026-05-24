@@ -5359,7 +5359,7 @@ Then restart Home Assistant to see your new dashboard in the sidebar."""
                             )
                             result = {
                                 "success": False,
-                                "error": f"Invalid response format: {str(e)}",
+                                "error": f"Invalid response format: {str(wrap_error)}",
                             }
 
                         result = _with_debug(result)

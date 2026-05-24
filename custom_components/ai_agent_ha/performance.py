@@ -187,6 +187,35 @@ class DataCache:
         # Invalidate entity states and any cached queries that might include this entity
         self._cache.invalidate("entity_states")
     
+    def get(self, key: str) -> Optional[Any]:
+        """Get a value from cache by key.
+        
+        This is a generic cache access method for arbitrary keys.
+        For specific data types, use the specialized methods like
+        get_entity_states(), get_entity_registry(), etc.
+        
+        Args:
+            key: The cache key to look up
+            
+        Returns:
+            The cached value, or None if not found or expired
+        """
+        return self._cache.get(key)
+    
+    def set(self, key: str, value: Any, ttl: Optional[float] = None) -> None:
+        """Set a value in cache by key.
+        
+        This is a generic cache storage method for arbitrary keys.
+        For specific data types, use the specialized methods like
+        set_entity_states(), set_entity_registry(), etc.
+        
+        Args:
+            key: The cache key to set
+            value: The value to cache
+            ttl: Time-to-live in seconds (optional, uses default if not specified)
+        """
+        self._cache.set(key, value, ttl=ttl)
+    
     @property
     def stats(self) -> Dict[str, Any]:
         """Get cache statistics."""
