@@ -1,12 +1,13 @@
+// Local vendor libraries (no internet required)
 import {
   LitElement,
   html,
   css,
-} from "https://unpkg.com/lit-element@2.4.0/lit-element.js?module";
+} from "./vendor/lit-element.js";
 
-// Markdown rendering libraries loaded from CDN
-import { marked } from 'https://cdn.jsdelivr.net/npm/marked@12.0.0/lib/marked.esm.js';
-import { DOMPurify } from 'https://cdn.jsdelivr.net/npm/dompurify@3.0.8/dist/purify.es.mjs';
+// Markdown rendering libraries (local, no CDN required)
+import { marked } from './vendor/marked.esm.js';
+import DOMPurify from './vendor/dompurify.es.mjs';
 
 console.log("AI Agent HA Panel loading..."); // Debug log
 
