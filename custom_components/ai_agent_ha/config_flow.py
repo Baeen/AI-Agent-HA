@@ -954,56 +954,52 @@ class AiAgentHaOptionsFlowHandler(config_entries.OptionsFlow):
 
         _LOGGER.debug("async_step_chat_history: user_input=%s", user_input)
 
-        try:
-            if user_input is not None:
-                # Store the chat history options
-                self.options_data.update(user_input)
-                _LOGGER.debug("Chat history options saved: %s", user_input)
-                return await self.async_step_permission_options()
+        if user_input is not None:
+            # Store the chat history options
+            self.options_data.update(user_input)
+            _LOGGER.debug("Chat history options saved: %s", user_input)
+            return await self.async_step_permission_options()
 
-            current_enabled = self.config_entry.options.get(
-                CONF_CHAT_HISTORY_ENABLED, DEFAULT_CHAT_HISTORY_ENABLED
-            )
-            current_max = self.config_entry.options.get(
-                CONF_CHAT_HISTORY_MAX_CONVERSATIONS, DEFAULT_MAX_CONVERSATIONS
-            )
-            current_clear_days = self.config_entry.options.get(
-                CONF_CHAT_HISTORY_AUTO_CLEAR_DAYS, DEFAULT_AUTO_CLEAR_DAYS
-            )
+        current_enabled = self.config_entry.options.get(
+            CONF_CHAT_HISTORY_ENABLED, DEFAULT_CHAT_HISTORY_ENABLED
+        )
+        current_max = self.config_entry.options.get(
+            CONF_CHAT_HISTORY_MAX_CONVERSATIONS, DEFAULT_MAX_CONVERSATIONS
+        )
+        current_clear_days = self.config_entry.options.get(
+            CONF_CHAT_HISTORY_AUTO_CLEAR_DAYS, DEFAULT_AUTO_CLEAR_DAYS
+        )
 
-            _LOGGER.debug(
-                "Chat history defaults: enabled=%s, max=%s, clear_days=%s",
-                current_enabled, current_max, current_clear_days
-            )
+        _LOGGER.debug(
+            "Chat history defaults: enabled=%s, max=%s, clear_days=%s",
+            current_enabled, current_max, current_clear_days
+        )
 
-            schema_dict = {
-                vol.Required(
-                    CONF_CHAT_HISTORY_ENABLED, default=current_enabled
-                ): BooleanSelector(),
-                vol.Required(
-                    CONF_CHAT_HISTORY_MAX_CONVERSATIONS, default=current_max
-                ): NumberSelector(
-                    NumberSelectorConfig(
-                        min=5, max=500, step=5, mode=NumberSelectorMode.SLIDER
-                    )
-                ),
-                vol.Required(
-                    CONF_CHAT_HISTORY_AUTO_CLEAR_DAYS, default=current_clear_days
-                ): NumberSelector(
-                    NumberSelectorConfig(
-                        min=1, max=365, step=1, mode=NumberSelectorMode.SLIDER
-                    )
-                ),
-            }
+        schema_dict = {
+            vol.Required(
+                CONF_CHAT_HISTORY_ENABLED, default=current_enabled
+            ): BooleanSelector(),
+            vol.Required(
+                CONF_CHAT_HISTORY_MAX_CONVERSATIONS, default=current_max
+            ): NumberSelector(
+                NumberSelectorConfig(
+                    min=5, max=500, step=5, mode=NumberSelectorMode.SLIDER
+                )
+            ),
+            vol.Required(
+                CONF_CHAT_HISTORY_AUTO_CLEAR_DAYS, default=current_clear_days
+            ): NumberSelector(
+                NumberSelectorConfig(
+                    min=1, max=365, step=1, mode=NumberSelectorMode.SLIDER
+                )
+            ),
+        }
 
-            return self.async_show_form(
-                step_id="chat_history",
-                data_schema=vol.Schema(schema_dict),
-                errors=errors,
-            )
-        except Exception:
-            _LOGGER.exception("Error in async_step_chat_history")
-            errors["_base"] = "Unknown error occurred"
+        return self.async_show_form(
+            step_id="chat_history",
+            data_schema=vol.Schema(schema_dict),
+            errors=errors,
+        )
 
     async def async_step_permission_options(self, user_input=None):
         """Handle the permission system options step."""
@@ -1011,53 +1007,49 @@ class AiAgentHaOptionsFlowHandler(config_entries.OptionsFlow):
 
         _LOGGER.debug("async_step_permission_options: user_input=%s", user_input)
 
-        try:
-            if user_input is not None:
-                # Store the permission options
-                self.options_data.update(user_input)
-                _LOGGER.debug("Permission options saved: %s", user_input)
-                return await self.async_step_prompt_compaction()
+        if user_input is not None:
+            # Store the permission options
+            self.options_data.update(user_input)
+            _LOGGER.debug("Permission options saved: %s", user_input)
+            return await self.async_step_prompt_compaction()
 
-            current_mode = self.config_entry.options.get(
-                CONF_PERMISSION_MODE, DEFAULT_PERMISSION_MODE
-            )
-            current_timeout = self.config_entry.options.get(
-                CONF_PERMISSION_TIMEOUT, DEFAULT_PERMISSION_TIMEOUT
-            )
+        current_mode = self.config_entry.options.get(
+            CONF_PERMISSION_MODE, DEFAULT_PERMISSION_MODE
+        )
+        current_timeout = self.config_entry.options.get(
+            CONF_PERMISSION_TIMEOUT, DEFAULT_PERMISSION_TIMEOUT
+        )
 
-            _LOGGER.debug(
-                "Permission defaults: mode=%s, timeout=%s", current_mode, current_timeout
-            )
+        _LOGGER.debug(
+            "Permission defaults: mode=%s, timeout=%s", current_mode, current_timeout
+        )
 
-            schema_dict = {
-                vol.Required(
-                    CONF_PERMISSION_MODE, default=current_mode
-                ): SelectSelector(
-                    SelectSelectorConfig(
-                        options=[
-                            {"value": "prompt", "label": "Prompt - Always ask for permission"},
-                            {"value": "auto_allow", "label": "Auto Allow - Allow all by default"},
-                            {"value": "auto_deny", "label": "Auto Deny - Deny all by default"},
-                        ]
-                    )
-                ),
-                vol.Required(
-                    CONF_PERMISSION_TIMEOUT, default=current_timeout
-                ): NumberSelector(
-                    NumberSelectorConfig(
-                        min=10, max=300, step=10, mode=NumberSelectorMode.SLIDER
-                    )
-                ),
-            }
+        schema_dict = {
+            vol.Required(
+                CONF_PERMISSION_MODE, default=current_mode
+            ): SelectSelector(
+                SelectSelectorConfig(
+                    options=[
+                        {"value": "prompt", "label": "Prompt - Always ask for permission"},
+                        {"value": "auto_allow", "label": "Auto Allow - Allow all by default"},
+                        {"value": "auto_deny", "label": "Auto Deny - Deny all by default"},
+                    ]
+                )
+            ),
+            vol.Required(
+                CONF_PERMISSION_TIMEOUT, default=current_timeout
+            ): NumberSelector(
+                NumberSelectorConfig(
+                    min=10, max=300, step=10, mode=NumberSelectorMode.SLIDER
+                )
+            ),
+        }
 
-            return self.async_show_form(
-                step_id="permission_options",
-                data_schema=vol.Schema(schema_dict),
-                errors=errors,
-            )
-        except Exception:
-            _LOGGER.exception("Error in async_step_permission_options")
-            errors["_base"] = "Unknown error occurred"
+        return self.async_show_form(
+            step_id="permission_options",
+            data_schema=vol.Schema(schema_dict),
+            errors=errors,
+        )
 
     async def async_step_prompt_compaction(self, user_input=None):
         """Handle the prompt compaction options step."""
@@ -1065,46 +1057,42 @@ class AiAgentHaOptionsFlowHandler(config_entries.OptionsFlow):
 
         _LOGGER.debug("async_step_prompt_compaction: user_input=%s", user_input)
 
-        try:
-            if user_input is not None:
-                # Store the compaction options in the config entry options
-                self.options_data.update(user_input)
-                _LOGGER.debug("Prompt compaction options saved: %s", user_input)
-                return await self.async_step_multimedia_options()
+        if user_input is not None:
+            # Store the compaction options in the config entry options
+            self.options_data.update(user_input)
+            _LOGGER.debug("Prompt compaction options saved: %s", user_input)
+            return await self.async_step_multimedia_options()
 
-            current_enabled = self.config_entry.options.get(
-                CONF_PROMPT_COMPACTION_ENABLED, DEFAULT_PROMPT_COMPACTION_ENABLED
-            )
-            current_threshold = self.config_entry.options.get(
-                CONF_PROMPT_COMPACTION_THRESHOLD, DEFAULT_COMPACTION_THRESHOLD
-            )
+        current_enabled = self.config_entry.options.get(
+            CONF_PROMPT_COMPACTION_ENABLED, DEFAULT_PROMPT_COMPACTION_ENABLED
+        )
+        current_threshold = self.config_entry.options.get(
+            CONF_PROMPT_COMPACTION_THRESHOLD, DEFAULT_COMPACTION_THRESHOLD
+        )
 
-            _LOGGER.debug(
-                "Prompt compaction defaults: enabled=%s, threshold=%s",
-                current_enabled, current_threshold
-            )
+        _LOGGER.debug(
+            "Prompt compaction defaults: enabled=%s, threshold=%s",
+            current_enabled, current_threshold
+        )
 
-            schema_dict = {
-                vol.Required(
-                    CONF_PROMPT_COMPACTION_ENABLED, default=current_enabled
-                ): BooleanSelector(),
-                vol.Required(
-                    CONF_PROMPT_COMPACTION_THRESHOLD, default=current_threshold
-                ): NumberSelector(
-                    NumberSelectorConfig(
-                        min=0.5, max=0.95, step=0.05, mode=NumberSelectorMode.SLIDER
-                    )
-                ),
-            }
+        schema_dict = {
+            vol.Required(
+                CONF_PROMPT_COMPACTION_ENABLED, default=current_enabled
+            ): BooleanSelector(),
+            vol.Required(
+                CONF_PROMPT_COMPACTION_THRESHOLD, default=current_threshold
+            ): NumberSelector(
+                NumberSelectorConfig(
+                    min=0.5, max=0.95, step=0.05, mode=NumberSelectorMode.SLIDER
+                )
+            ),
+        }
 
-            return self.async_show_form(
-                step_id="prompt_compaction",
-                data_schema=vol.Schema(schema_dict),
-                errors=errors,
-            )
-        except Exception:
-            _LOGGER.exception("Error in async_step_prompt_compaction")
-            errors["_base"] = "Unknown error occurred"
+        return self.async_show_form(
+            step_id="prompt_compaction",
+            data_schema=vol.Schema(schema_dict),
+            errors=errors,
+        )
 
     async def async_step_multimedia_options(self, user_input=None):
         """Handle the multimedia options step."""
@@ -1112,80 +1100,76 @@ class AiAgentHaOptionsFlowHandler(config_entries.OptionsFlow):
 
         _LOGGER.debug("async_step_multimedia_options: user_input=%s", user_input)
 
-        try:
-            if user_input is not None:
-                # Store the multimedia options in the config entry options
-                self.options_data.update(user_input)
-                _LOGGER.debug("Multimedia options saved: %s", user_input)
-                return self.async_create_entry(title="", data=self.options_data)
+        if user_input is not None:
+            # Store the multimedia options in the config entry options
+            self.options_data.update(user_input)
+            _LOGGER.debug("Multimedia options saved: %s", user_input)
+            return self.async_create_entry(title="", data=self.options_data)
 
-            current_multimodal_enabled = self.config_entry.options.get(
-                CONF_MULTIMODAL_ENABLED, DEFAULT_MULTIMODAL_ENABLED
-            )
-            current_image_upload_enabled = self.config_entry.options.get(
-                CONF_IMAGE_UPLOAD_ENABLED, DEFAULT_IMAGE_UPLOAD_ENABLED
-            )
-            current_max_image_size = self.config_entry.options.get(
-                CONF_MAX_IMAGE_SIZE, DEFAULT_MAX_IMAGE_SIZE
-            )
-            current_max_images = self.config_entry.options.get(
-                CONF_MAX_IMAGES_PER_MESSAGE, DEFAULT_MAX_IMAGES_PER_MESSAGE
-            )
-            current_quality = self.config_entry.options.get(
-                CONF_IMAGE_COMPRESSION_QUALITY, DEFAULT_IMAGE_COMPRESSION_QUALITY
-            )
+        current_multimodal_enabled = self.config_entry.options.get(
+            CONF_MULTIMODAL_ENABLED, DEFAULT_MULTIMODAL_ENABLED
+        )
+        current_image_upload_enabled = self.config_entry.options.get(
+            CONF_IMAGE_UPLOAD_ENABLED, DEFAULT_IMAGE_UPLOAD_ENABLED
+        )
+        current_max_image_size = self.config_entry.options.get(
+            CONF_MAX_IMAGE_SIZE, DEFAULT_MAX_IMAGE_SIZE
+        )
+        current_max_images = self.config_entry.options.get(
+            CONF_MAX_IMAGES_PER_MESSAGE, DEFAULT_MAX_IMAGES_PER_MESSAGE
+        )
+        current_quality = self.config_entry.options.get(
+            CONF_IMAGE_COMPRESSION_QUALITY, DEFAULT_IMAGE_COMPRESSION_QUALITY
+        )
 
-            _LOGGER.debug(
-                "Multimedia defaults: multimodal=%s, image_upload=%s, max_size=%s, max_images=%s, quality=%s",
-                current_multimodal_enabled, current_image_upload_enabled,
-                current_max_image_size, current_max_images, current_quality
-            )
+        _LOGGER.debug(
+            "Multimedia defaults: multimodal=%s, image_upload=%s, max_size=%s, max_images=%s, quality=%s",
+            current_multimodal_enabled, current_image_upload_enabled,
+            current_max_image_size, current_max_images, current_quality
+        )
 
-            # Convert max_image_size to MB for user-friendly display
-            size_options = [
-                {"value": 1 * 1024 * 1024, "label": "1 MB"},
-                {"value": 5 * 1024 * 1024, "label": "5 MB"},
-                {"value": 10 * 1024 * 1024, "label": "10 MB"},
-                {"value": 20 * 1024 * 1024, "label": "20 MB"},
-            ]
-            # Ensure current value is in the list
-            if not any(opt["value"] == current_max_image_size for opt in size_options):
-                size_mb = current_max_image_size / (1024 * 1024)
-                size_options.append({"value": current_max_image_size, "label": f"{size_mb:.0f} MB"})
+        # Convert max_image_size to string for SelectSelector (expects str values)
+        size_options = [
+            {"value": str(1 * 1024 * 1024), "label": "1 MB"},
+            {"value": str(5 * 1024 * 1024), "label": "5 MB"},
+            {"value": str(10 * 1024 * 1024), "label": "10 MB"},
+            {"value": str(20 * 1024 * 1024), "label": "20 MB"},
+        ]
+        # Ensure current value is in the list (convert to string for comparison)
+        if not any(opt["value"] == str(current_max_image_size) for opt in size_options):
+            size_mb = current_max_image_size / (1024 * 1024)
+            size_options.append({"value": str(current_max_image_size), "label": f"{size_mb:.0f} MB"})
 
-            schema_dict = {
-                vol.Required(
-                    CONF_MULTIMODAL_ENABLED, default=current_multimodal_enabled
-                ): BooleanSelector(),
-                vol.Required(
-                    CONF_IMAGE_UPLOAD_ENABLED, default=current_image_upload_enabled
-                ): BooleanSelector(),
-                vol.Required(
-                    CONF_MAX_IMAGE_SIZE, default=current_max_image_size
-                ): SelectSelector(
-                    SelectSelectorConfig(options=size_options)
-                ),
-                vol.Required(
-                    CONF_MAX_IMAGES_PER_MESSAGE, default=current_max_images
-                ): NumberSelector(
-                    NumberSelectorConfig(
-                        min=1, max=10, step=1, mode=NumberSelectorMode.SLIDER
-                    )
-                ),
-                vol.Required(
-                    CONF_IMAGE_COMPRESSION_QUALITY, default=current_quality
-                ): NumberSelector(
-                    NumberSelectorConfig(
-                        min=50, max=100, step=5, mode=NumberSelectorMode.SLIDER
-                    )
-                ),
-            }
+        schema_dict = {
+            vol.Required(
+                CONF_MULTIMODAL_ENABLED, default=current_multimodal_enabled
+            ): BooleanSelector(),
+            vol.Required(
+                CONF_IMAGE_UPLOAD_ENABLED, default=current_image_upload_enabled
+            ): BooleanSelector(),
+            vol.Required(
+                CONF_MAX_IMAGE_SIZE, default=current_max_image_size
+            ): SelectSelector(
+                SelectSelectorConfig(options=size_options)
+            ),
+            vol.Required(
+                CONF_MAX_IMAGES_PER_MESSAGE, default=current_max_images
+            ): NumberSelector(
+                NumberSelectorConfig(
+                    min=1, max=10, step=1, mode=NumberSelectorMode.SLIDER
+                )
+            ),
+            vol.Required(
+                CONF_IMAGE_COMPRESSION_QUALITY, default=current_quality
+            ): NumberSelector(
+                NumberSelectorConfig(
+                    min=50, max=100, step=5, mode=NumberSelectorMode.SLIDER
+                )
+            ),
+        }
 
-            return self.async_show_form(
-                step_id="multimedia_options",
-                data_schema=vol.Schema(schema_dict),
-                errors=errors,
-            )
-        except Exception:
-            _LOGGER.exception("Error in async_step_multimedia_options")
-            errors["_base"] = "Unknown error occurred"
+        return self.async_show_form(
+            step_id="multimedia_options",
+            data_schema=vol.Schema(schema_dict),
+            errors=errors,
+        )
