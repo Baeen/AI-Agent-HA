@@ -85,6 +85,17 @@ from .prompt_compactor import PromptCompactor, ConversationSummary
 from .chat_history import ChatHistoryManager
 from .multimedia import MultimediaProcessor, ImageAttachment
 from .input_validator import InputValidator, get_input_validator
+from .response_validator import ResponseStructureValidator, get_response_validator
+from .error_recovery import ErrorRecoveryManager, get_error_recovery_manager
+from .action_executor import ActionExecutor, ActionResult, ActionValidationResult
+from .performance import (
+    DataCache,
+    ParallelExecutor,
+    PerformanceMonitor,
+    get_data_cache,
+    get_parallel_executor,
+    get_performance_monitor,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -1636,6 +1647,20 @@ class AiAgentHaAgent:
             blacklist=blacklist_rules,
             timeout=config.get(CONF_PERMISSION_TIMEOUT, 60)
         )
+
+        # Initialize Response Validator for AI response structure validation
+        self.response_validator = get_response_validator(strict_mode=False)
+
+        # Initialize Error Recovery Manager for automatic error handling and recovery
+        self.error_recovery_manager = get_error_recovery_manager(config)
+
+        # Initialize Action Executor for executing service calls
+        self.action_executor = ActionExecutor(hass)
+
+        # Initialize Performance modules for caching and parallel execution
+        self.data_cache = get_data_cache(enabled=True)
+        self.parallel_executor = get_parallel_executor()
+        self.performance_monitor = get_performance_monitor()
 
         _LOGGER.debug(
             "AiAgentHaAgent initialized successfully with provider: %s, model: %s",
