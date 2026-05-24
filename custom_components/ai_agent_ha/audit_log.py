@@ -194,12 +194,13 @@ class AuditLogManager:
             storage_path: Custom storage path (uses HA storage helper if None)
         """
         self.hass = hass
-        self.retention_policy = retention_policy or RetentionPolicy()
-        self.persistence_enabled = persistence_enabled
+        # Initialize _logs BEFORE setting retention_policy to avoid AttributeError
+        # when the setter calls _apply_retention()
         self._logs: List[AuditLogEntry] = []
         self._lock = False  # Simple lock for thread safety
         self._event_listeners: List[Callable[[AuditLogEntry], None]] = []
         self._entry_counter = 0
+        self.persistence_enabled = persistence_enabled
         
         # Storage helper for persistence
         self._store = Store(
@@ -208,6 +209,9 @@ class AuditLogManager:
             key=STORE_KEY,
             atomic_writes=True,
         )
+        
+        # Set retention policy AFTER _logs is initialized
+        self.retention_policy = retention_policy or RetentionPolicy()
         
         # Load persisted logs if enabled (defer to avoid Store.data not being ready)
         if persistence_enabled:
@@ -316,6 +320,10 @@ class AuditLogManager:
         Returns:
             Number of entries removed
         """
+        # Guard: Skip if _logs not initialized (e.g., during early initialization)
+        if not hasattr(self, '_logs') or self._logs is None:
+            return 0
+        
         removed = 0
         
         # Remove old entries based on age
