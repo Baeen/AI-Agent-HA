@@ -3487,6 +3487,9 @@ Then restart Home Assistant to see your new dashboard in the sidebar."""
 
             max_iterations = 5  # Prevent infinite loops
             iteration = 0
+            
+            # Track action details for frontend display
+            action_details = []
 
             while iteration < max_iterations:
                 iteration += 1
@@ -3803,6 +3806,7 @@ Then restart Home Assistant to see your new dashboard in the sidebar."""
                             result = {
                                 "success": True,
                                 "answer": final_response_text,
+                                "action_details": action_details if action_details else None,
                             }
                             result = _with_debug(result)
                             self._set_cached_data(cache_key, result)
@@ -4146,6 +4150,16 @@ Then restart Home Assistant to see your new dashboard in the sidebar."""
                                 data.get("success", "N/A") if isinstance(data, dict) else "N/A",
                                 json.dumps(data, default=str)[:500] if data else "None",
                             )
+                            
+                            # Track action details for frontend display
+                            action_detail = {
+                                "domain": domain,
+                                "service": service,
+                                "target": target,
+                                "service_data": service_data,
+                                "result": data
+                            }
+                            action_details.append(action_detail)
 
                             # Add data to conversation as a user message (not system to avoid overwriting system prompt in Anthropic API)
                             self.conversation_history.append(

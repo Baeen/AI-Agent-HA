@@ -332,6 +332,18 @@ class AiAgentHaPanel extends LitElement {
         background-color: #333;
         font-weight: 600;
       }
+      /* Action report styling */
+      .action-report {
+        background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%);
+        border-left: 4px solid #4caf50;
+        padding: 12px 16px;
+        border-radius: 4px;
+        margin: 8px 0;
+        font-size: 0.95em;
+      }
+      .action-report br:last-child {
+        display: none;
+      }
       /* Copy button for code blocks */
       .copy-code-btn {
         position: absolute;
@@ -1398,6 +1410,11 @@ class AiAgentHaPanel extends LitElement {
       return html`<div class="message-content">${message.text}</div>`;
     }
     
+    // For action report messages, use special styling
+    if (message.isActionReport) {
+      return html`<div class="message-content action-report">${message.text.replace(/\n/g, html`<br>`)}</div>`;
+    }
+    
     // For assistant messages, check if markdown formatting is needed
     if (this._hasMarkdown(message.text)) {
       const htmlContent = this._formatMarkdown(message.text);
@@ -1708,7 +1725,20 @@ class AiAgentHaPanel extends LitElement {
       }
 
       console.debug("Adding message to UI:", message);
+      
+      // Add action details to message if present
+      if (event.data.action_details && Array.isArray(event.data.action_details) && event.data.action_details.length > 0) {
+        message.action_details = event.data.action_details;
+        console.debug("Found action details:", event.data.action_details);
+      }
+      
       this._messages = [...this._messages, message];
+      
+      // If there are action details, add a separate message showing the actions performed
+      if (event.data.action_details && Array.isArray(event.data.action_details) && event.data.action_details.length > 0) {
+        const actionMessages = this._formatActionDetails(event.data.action_details);
+        this._messages = [...this._messages, ...actionMessages];
+      }
     } else {
       this._error = event.data.error || 'An error occurred';
       this._messages = [
@@ -1726,6 +1756,48 @@ class AiAgentHaPanel extends LitElement {
       }];
       this.requestUpdate();
     }
+  }
+  
+  /**
+   * Format action details for display in chat
+   * @param {Array} actionDetails - Array of action detail objects
+   * @returns {Array} Array of message objects for display
+   */
+  _formatActionDetails(actionDetails) {
+    const messages = [];
+    
+    // Add a header message
+    const actionTypes = new Set(actionDetails.map(a => `${a.domain}.${a.service}`));
+    let actionSummary = 'I performed the following actions:';
+    
+    if (actionDetails.length === 1) {
+      const action = actionDetails[0];
+      const serviceName = action.service.replace('_', ' ');
+      const targetEntities = Array.isArray(action.target?.entity_id)
+        ? action.target.entity_id.join(', ')
+        : action.target?.entity_id || 'N/A';
+      
+      actionSummary = `✅ **Performed:** ${action.domain}.${action.service}\n`;
+      actionSummary += `📍 **Target:** ${targetEntities}`;
+    } else {
+      actionSummary = `\n✅ **Performed ${actionDetails.length} actions:**\n\n`;
+      actionDetails.forEach((action, index) => {
+        const serviceName = action.service.replace('_', ' ');
+        const targetEntities = Array.isArray(action.target?.entity_id)
+          ? action.target.entity_id.join(', ')
+          : action.target?.entity_id || 'N/A';
+        
+        actionSummary += `${index + 1}. **${action.domain}.${action.service}** → ${targetEntities}\n`;
+      });
+    }
+    
+    messages.push({
+      type: 'assistant',
+      text: actionSummary,
+      isActionReport: true
+    });
+    
+    return messages;
   }
 
   async _approveAutomation(automation) {
