@@ -87,7 +87,7 @@ from .multimedia import MultimediaProcessor, ImageAttachment
 from .input_validator import InputValidator, get_input_validator
 from .response_validator import ResponseStructureValidator, get_response_validator
 from .error_recovery import ErrorRecoveryManager, get_error_recovery_manager
-from .action_executor import ActionExecutor, ActionResult, ActionValidationResult
+from .action_executor import ActionExecutor, ActionResult, SimulatedActionResult
 from .performance import (
     DataCache,
     ParallelExecutor,
