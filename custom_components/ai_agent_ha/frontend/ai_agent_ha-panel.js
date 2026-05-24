@@ -4,6 +4,7 @@ import {
   html,
   css,
 } from "./vendor/lit-element.js";
+import { unsafeHTML } from './vendor/unsafe-HTML.js';
 
 // Markdown rendering libraries (local, no CDN required)
 import { marked } from './vendor/marked.esm.js';
@@ -1378,7 +1379,7 @@ class AiAgentHaPanel extends LitElement {
     
     // For assistant messages, check if markdown formatting is needed
     if (this._hasMarkdown(message.text)) {
-      return html`<div class="message-content" innerHTML=${this._formatMarkdown(message.text)}></div>`;
+      return html`<div class="message-content">${unsafeHTML(this._formatMarkdown(message.text))}</div>`;
     }
     
     // Plain text with line breaks
