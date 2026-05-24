@@ -4029,6 +4029,10 @@ Then restart Home Assistant to see your new dashboard in the sidebar."""
                         elif (
                             response_data.get("request_type") == "automation_suggestion"
                         ):
+                            # Extract automation config from suggestion
+                            automation_config = response_data.get("automation", {})
+                            message = response_data.get("message", "Here's your automation suggestion")
+                            
                             # Add automation suggestion to conversation history
                             self.conversation_history.append(
                                 {
@@ -4039,14 +4043,56 @@ Then restart Home Assistant to see your new dashboard in the sidebar."""
                                 }
                             )
 
-                            # Return automation suggestion
+                            # Actually create the automation if config is valid
                             _LOGGER.debug(
-                                "Received automation suggestion: %s",
-                                json.dumps(response_data.get("automation")),
+                                "Processing automation_suggestion with config: %s",
+                                json.dumps(automation_config, default=str),
                             )
+                            
+                            action_details = []
+                            creation_result = {"created": False, "result": None}
+                            
+                            if automation_config.get("alias") and automation_config.get("trigger") and automation_config.get("action"):
+                                try:
+                                    creation_result = await self.create_automation(automation_config)
+                                    action_details.append({
+                                        "domain": "automation",
+                                        "service": "create",
+                                        "target": {},
+                                        "service_data": automation_config,
+                                        "result": creation_result,
+                                    })
+                                    _LOGGER.debug(
+                                        "Created automation from suggestion: %s",
+                                        creation_result,
+                                    )
+                                except Exception as e:
+                                    _LOGGER.error(
+                                        "Failed to create automation from suggestion: %s",
+                                        str(e),
+                                    )
+                                    creation_result = {"error": str(e), "success": False}
+                                    action_details.append({
+                                        "domain": "automation",
+                                        "service": "create",
+                                        "target": {},
+                                        "service_data": automation_config,
+                                        "result": {"error": str(e), "success": False},
+                                    })
+                            
+                            # Build answer message
+                            if creation_result.get("success") or creation_result.get("id"):
+                                auto_alias = automation_config.get("alias", "the automation")
+                                answer = f"{message}\n\nI successfully created the automation '{auto_alias}'."
+                                _LOGGER.info("Automation '%s' created successfully", auto_alias)
+                            else:
+                                error_msg = creation_result.get("error", "Unknown error")
+                                answer = f"{message}\n\nHowever, failed to create the automation: {error_msg}"
+                            
                             result = {
                                 "success": True,
-                                "answer": json.dumps(response_data),
+                                "answer": answer,
+                                "action_details": action_details,
                             }
                             result = _with_debug(result)
                             self._set_cached_data(cache_key, result)
@@ -4054,6 +4100,10 @@ Then restart Home Assistant to see your new dashboard in the sidebar."""
                         elif (
                             response_data.get("request_type") == "dashboard_suggestion"
                         ):
+                            # Extract dashboard config from suggestion
+                            dashboard_config = response_data.get("dashboard", {})
+                            message = response_data.get("message", "Here's your dashboard suggestion")
+                            
                             # Add dashboard suggestion to conversation history
                             self.conversation_history.append(
                                 {
@@ -4064,14 +4114,56 @@ Then restart Home Assistant to see your new dashboard in the sidebar."""
                                 }
                             )
 
-                            # Return dashboard suggestion
+                            # Actually create the dashboard if config is valid
                             _LOGGER.debug(
-                                "Received dashboard suggestion: %s",
-                                json.dumps(response_data.get("dashboard")),
+                                "Processing dashboard_suggestion with config: %s",
+                                json.dumps(dashboard_config, default=str),
                             )
+                            
+                            action_details = []
+                            creation_result = {"created": False, "result": None}
+                            
+                            if dashboard_config.get("title") and dashboard_config.get("url_path"):
+                                try:
+                                    creation_result = await self.create_dashboard(dashboard_config)
+                                    action_details.append({
+                                        "domain": "lovelace",
+                                        "service": "create_dashboard",
+                                        "target": {},
+                                        "service_data": dashboard_config,
+                                        "result": creation_result,
+                                    })
+                                    _LOGGER.debug(
+                                        "Created dashboard from suggestion: %s",
+                                        creation_result,
+                                    )
+                                except Exception as e:
+                                    _LOGGER.error(
+                                        "Failed to create dashboard from suggestion: %s",
+                                        str(e),
+                                    )
+                                    creation_result = {"error": str(e), "success": False}
+                                    action_details.append({
+                                        "domain": "lovelace",
+                                        "service": "create_dashboard",
+                                        "target": {},
+                                        "service_data": dashboard_config,
+                                        "result": {"error": str(e), "success": False},
+                                    })
+                            
+                            # Build answer message
+                            if creation_result.get("success") or creation_result.get("id"):
+                                dash_title = dashboard_config.get("title", "the dashboard")
+                                answer = f"{message}\n\nI successfully created the dashboard '{dash_title}'."
+                                _LOGGER.info("Dashboard '%s' created successfully", dash_title)
+                            else:
+                                error_msg = creation_result.get("error", "Unknown error")
+                                answer = f"{message}\n\nHowever, failed to create the dashboard: {error_msg}"
+                            
                             result = {
                                 "success": True,
-                                "answer": json.dumps(response_data),
+                                "answer": answer,
+                                "action_details": action_details,
                             }
                             result = _with_debug(result)
                             self._set_cached_data(cache_key, result)
