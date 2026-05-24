@@ -4,7 +4,6 @@ import {
   html,
   css,
 } from "./vendor/lit-element.js";
-import { unsafeHTML } from './vendor/unsafe-HTML.js';
 
 // Markdown rendering libraries (local, no CDN required)
 import { marked } from './vendor/marked.esm.js';
@@ -926,7 +925,29 @@ class AiAgentHaPanel extends LitElement {
 
     if (changedProps.has('_messages') || changedProps.has('_isLoading')) {
       this._scrollToBottom();
+      // Set innerHTML for markdown content after render (use requestAnimationFrame to ensure DOM is ready)
+      requestAnimationFrame(() => this._setMarkdownContent());
     }
+  }
+  
+  firstUpdated() {
+    // Set innerHTML for all markdown content elements on first render
+    this._setMarkdownContent();
+  }
+  
+  _setMarkdownContent() {
+    // Use requestAnimationFrame to ensure DOM is ready
+    requestAnimationFrame(() => {
+      const markdownElements = this.shadowRoot?.querySelectorAll('.markdown-content');
+      if (markdownElements) {
+        markdownElements.forEach(el => {
+          const htmlContent = el.getAttribute('data-html');
+          if (htmlContent && el.innerHTML !== htmlContent) {
+            el.innerHTML = htmlContent;
+          }
+        });
+      }
+    });
   }
 
   _renderPromptsSection() {
@@ -1379,7 +1400,8 @@ class AiAgentHaPanel extends LitElement {
     
     // For assistant messages, check if markdown formatting is needed
     if (this._hasMarkdown(message.text)) {
-      return html`<div class="message-content">${unsafeHTML(this._formatMarkdown(message.text))}</div>`;
+      const htmlContent = this._formatMarkdown(message.text);
+      return html`<div class="message-content markdown-content" data-html=${htmlContent}></div>`;
     }
     
     // Plain text with line breaks
