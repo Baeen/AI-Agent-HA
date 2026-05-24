@@ -1703,18 +1703,98 @@ class AiAgentHaAgent:
         """Store data in cache with timestamp."""
         self._cache[key] = (time.time(), data)
     
-    def _generate_fallback_response(self) -> str:
+    def _generate_fallback_response(self, action_details: Optional[list] = None) -> str:
         """Generate a fallback response when the AI returns an empty final_response.
         
-        This method analyzes the conversation history to generate a meaningful response
-        based on the actions that were taken.
+        This method analyzes the conversation history and action details to generate
+        a meaningful response based on the actions that were taken and their results.
+        
+        Args:
+            action_details: Optional list of action detail dicts with 'domain', 'service',
+                           'target', 'service_data', and 'result' keys.
+        
+        Returns:
+            A string containing the fallback response message.
+        """
+        _LOGGER.debug("Generating fallback response from conversation history, action_details=%s", action_details)
+        
+        # If we have action_details with results, use those for success/failure info
+        if action_details and isinstance(action_details, list) and len(action_details) > 0:
+            return self._generate_fallback_from_action_details(action_details)
+        
+        # Fall back to analyzing conversation history
+        return self._generate_fallback_from_history()
+    
+    def _generate_fallback_from_action_details(self, action_details: list) -> str:
+        """Generate fallback response from action details with results.
+        
+        Args:
+            action_details: List of action detail dicts with results.
+            
+        Returns:
+            A string containing the fallback response with success/failure status.
+        """
+        successful_actions = []
+        failed_actions = []
+        
+        for detail in action_details:
+            domain = detail.get("domain", "")
+            service = detail.get("service", "")
+            target = detail.get("target", {})
+            service_data = detail.get("service_data", {})
+            result = detail.get("result", {})
+            
+            # Check if the action was successful
+            is_success = True
+            error_msg = None
+            
+            if isinstance(result, dict):
+                if result.get("error"):
+                    is_success = False
+                    error_msg = result["error"]
+                elif not result.get("success", True):
+                    is_success = False
+                    error_msg = result.get("message", "Unknown error")
+            elif result is None or result == {}:
+                # Empty result might indicate failure
+                is_success = False
+                error_msg = "No result returned"
+            
+            # Generate human-readable description of the action
+            action_description = self._format_action_description(domain, service, target, service_data)
+            
+            if is_success:
+                successful_actions.append(action_description)
+            else:
+                failed_actions.append((action_description, error_msg or "Unknown error"))
+        
+        # Build the response message
+        parts = []
+        
+        if successful_actions:
+            if len(successful_actions) == 1:
+                parts.append(f"{successful_actions[0]} succeeded.")
+            else:
+                parts.append(f"I successfully completed: {'; '.join(successful_actions)}.")
+        
+        if failed_actions:
+            for action, error in failed_actions:
+                parts.append(f"However, {action} failed with error: {error}")
+        
+        if parts:
+            return " ".join(parts)
+        
+        return "I processed your request but encountered an issue generating a response. Please try again."
+    
+    def _generate_fallback_from_history(self) -> str:
+        """Generate fallback response by analyzing conversation history.
         
         Returns:
             A string containing the fallback response message.
         """
         _LOGGER.debug("Generating fallback response from conversation history")
         
-        # Look at the conversation history to find what actions were taken
+        # Look at the conversation history to find what actions were requested
         last_service_calls = []
         for msg in reversed(self.conversation_history):
             content = msg.get("content", "")
@@ -1737,6 +1817,7 @@ class AiAgentHaAgent:
             return "I processed your request but encountered an issue generating a response. Please try again."
         
         # Generate a meaningful response based on the service calls
+        # Note: This doesn't have result info, so it's less precise
         responses = []
         for call in last_service_calls:
             domain = call["domain"]
@@ -1744,62 +1825,76 @@ class AiAgentHaAgent:
             target = call["target"]
             service_data = call.get("service_data", {})
             
-            # Generate human-readable description
-            if domain == "homeassistant" and service == "rename_entity":
-                new_entity_id = target.get("entity_id", "") if isinstance(target, dict) else ""
-                if new_entity_id:
-                    responses.append(f"I renamed the device to '{new_entity_id}'.")
-                else:
-                    responses.append("I renamed the device.")
-            elif domain == "renamed_entity" and service == "rename":
-                # Handle renamed_entity.rename service (Home Assistant entity renaming)
-                new_object_id = service_data.get("new_object_id", "") if isinstance(service_data, dict) else ""
-                original_entity = target.get("entity_id", "") if isinstance(target, dict) else ""
-                if new_object_id and original_entity:
-                    responses.append(f"I renamed {original_entity} to '{new_object_id}'.")
-                elif new_object_id:
-                    responses.append(f"I renamed the entity to '{new_object_id}'.")
-                else:
-                    responses.append("I renamed the entity.")
-            elif domain == "homeassistant" and service == "call_service":
-                # Handle create_binary_sensor or other created entities
-                if isinstance(target, dict):
-                    target_entity = target.get("entity_id", "")
-                    if target_entity:
-                        responses.append(f"I called {target_entity}.")
-                    else:
-                        responses.append("I executed the service call.")
-                else:
-                    responses.append("I executed the service call.")
-            elif domain == "homeassistant" and service == "turn_on":
-                if isinstance(target, dict) and "entity_id" in target:
-                    responses.append(f"I turned on {target['entity_id']}.")
-                else:
-                    responses.append("I turned on the device.")
-            elif domain == "homeassistant" and service == "turn_off":
-                if isinstance(target, dict) and "entity_id" in target:
-                    responses.append(f"I turned off {target['entity_id']}.")
-                else:
-                    responses.append("I turned off the device.")
-            else:
-                # Generic response for other service types
-                service_name = service.replace("_", " ")
-                if isinstance(target, dict) and target.get("entity_id"):
-                    entities = target.get("entity_id", [])
-                    if isinstance(entities, list):
-                        entities_str = ", ".join(entities)
-                    else:
-                        entities_str = entities
-                    responses.append(f"I {service_name} for {entities_str}.")
-                else:
-                    responses.append(f"I executed {domain}.{service}.")
+            response = self._format_action_description(domain, service, target, service_data)
+            if response:
+                responses.append(f"{response} (status unknown - please verify)")
         
-        if len(responses) == 1:
-            return responses[0]
-        elif len(responses) == 2:
-            return f"{responses[0]} {responses[1]}"
-        else:
-            return f"I completed {len(responses)} actions: {'; '.join(responses[:-1])}. {responses[-1]}"
+        if responses:
+            return " ".join(responses)
+        
+        return "I processed your request but encountered an issue generating a response. Please try again."
+    
+    def _format_action_description(self, domain: str, service: str, target: dict, service_data: dict) -> str:
+        """Format an action description for display in fallback responses.
+        
+        Args:
+            domain: The service domain (e.g., 'homeassistant', 'renamed_entity')
+            service: The service name (e.g., 'rename', 'turn_on')
+            target: The target dict with entity_id
+            service_data: The service data
+            
+        Returns:
+            A human-readable action description.
+        """
+        # Handle renamed_entity.rename service (Home Assistant entity renaming)
+        if domain == "renamed_entity" and service == "rename":
+            new_object_id = service_data.get("new_object_id", "") if isinstance(service_data, dict) else ""
+            original_entity = target.get("entity_id", "") if isinstance(target, dict) else ""
+            if new_object_id and original_entity:
+                return f"I renamed {original_entity} to '{new_object_id}'"
+            elif new_object_id:
+                return f"I renamed the entity to '{new_object_id}'"
+            else:
+                return "I renamed the entity"
+        
+        # Handle homeassistant.rename_entity service
+        if domain == "homeassistant" and service == "rename_entity":
+            new_entity_id = target.get("entity_id", "") if isinstance(target, dict) else ""
+            if new_entity_id:
+                return f"I renamed the device to '{new_entity_id}'"
+            else:
+                return "I renamed the device"
+        
+        # Handle turn_on/turn_off
+        if domain == "homeassistant" and service == "turn_on":
+            if isinstance(target, dict) and "entity_id" in target:
+                return f"I turned on {target['entity_id']}"
+            return "I turned on the device"
+        
+        if domain == "homeassistant" and service == "turn_off":
+            if isinstance(target, dict) and "entity_id" in target:
+                return f"I turned off {target['entity_id']}"
+            return "I turned off the device"
+        
+        # Handle generic call_service
+        if domain == "homeassistant" and service == "call_service":
+            if isinstance(target, dict):
+                target_entity = target.get("entity_id", "")
+                if target_entity:
+                    return f"I called {target_entity}"
+            return "I executed the service call"
+        
+        # Generic response for other service types
+        service_name = service.replace("_", " ")
+        if isinstance(target, dict) and target.get("entity_id"):
+            entities = target.get("entity_id", [])
+            if isinstance(entities, list):
+                entities_str = ", ".join(entities)
+            else:
+                entities_str = entities
+            return f"I {service_name} for {entities_str}"
+        
+        return f"I executed {domain}.{service}"
 
     def _sanitize_automation_config(self, config: Dict[str, Any]) -> Dict[str, Any]:
         """Sanitize automation configuration to prevent injection attacks."""
@@ -3826,8 +3921,8 @@ Then restart Home Assistant to see your new dashboard in the sidebar."""
                                     "WARNING: AI returned empty final_response! Generating fallback message. Full response_data: %s",
                                     json.dumps(response_data, default=str),
                                 )
-                                # Generate a fallback message based on conversation history
-                                fallback_message = self._generate_fallback_response()
+                                # Generate a fallback message based on action details
+                                fallback_message = self._generate_fallback_response(action_details)
                                 final_response_text = fallback_message
                                 _LOGGER.info(
                                     "Generated fallback response: %s", fallback_message
@@ -4360,7 +4455,7 @@ Then restart Home Assistant to see your new dashboard in the sidebar."""
 
             # If we've reached max iterations without a final response, use fallback
             _LOGGER.warning("Reached maximum iterations without final response, using fallback")
-            fallback_message = self._generate_fallback_response()
+            fallback_message = self._generate_fallback_response(action_details)
             result = {
                 "success": True,
                 "answer": fallback_message,
