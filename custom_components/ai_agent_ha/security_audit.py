@@ -138,6 +138,175 @@ class SecurityAuditor:
         (r'access_key\s*[:=]\s*["\']([^"\']+)["\']', 'Hardcoded access key detected'),
     ]
 
+    # API key format validation patterns - detects known credential formats
+    API_KEY_FORMAT_PATTERNS = [
+        (
+            r'ghp_[A-Za-z0-9]{36}',
+            'GitHub Personal Access Token detected',
+            'GitHub tokens should be stored using secrets! or in .secrets file. Use !secret in your configuration.',
+        ),
+        (
+            r'gho_[A-Za-z0-9]{36}',
+            'GitHub OAuth Access Token detected',
+            'GitHub OAuth tokens should be stored using secrets! or in .secrets file.',
+        ),
+        (
+            r'github_pat_[A-Za-z0-9_]{82}',
+            'GitHub Fine-Grained Personal Access Token detected',
+            'GitHub fine-grained tokens should be stored using secrets! or in .secrets file.',
+        ),
+        (
+            r'AKIA[0-9A-Z]{16}',
+            'AWS Access Key ID detected',
+            'AWS keys should be stored using environment variables or secrets manager. Never hardcode AWS credentials.',
+        ),
+        (
+            r'[A-Za-z0-9/+=]{40}',
+            'Potential AWS Secret Access Key detected (base64 format)',
+            'AWS secret keys should be stored using environment variables or secrets manager.',
+        ),
+        (
+            r'sk-[A-Za-z0-9]{48}',
+            'OpenAI API Secret Key detected',
+            'OpenAI API keys should be stored using secrets! or environment variables.',
+        ),
+        (
+            r'sk-proj-[A-Za-z0-9]{48}',
+            'OpenAI Project Secret Key detected',
+            'OpenAI project keys should be stored using secrets! or environment variables.',
+        ),
+        (
+            r'SK[A-Za-z0-9]{63}',
+            'Stripe Secret Key detected',
+            'Stripe keys should never be hardcoded. Use environment variables or secrets manager.',
+        ),
+        (
+            r'rk_[A-Za-z0-9]{48}',
+            'Replicate API Key detected',
+            'Replicate API keys should be stored using secrets! or environment variables.',
+        ),
+        (
+            r'glc_[A-Za-z0-9]{48}',
+            'Gleam Cloud API Token detected',
+            'Gleam Cloud tokens should be stored using secrets! or environment variables.',
+        ),
+        (
+            r'EAAB[0-9a-zA-Z]{20,}',
+            'Facebook Access Token detected',
+            'Facebook tokens should be stored using secrets! or environment variables.',
+        ),
+        (
+            r'ya29\.[A-Za-z0-9_-]{20,}',
+            'Google OAuth 2.0 Refresh Token detected',
+            'Google tokens should be stored using secrets! or environment variables.',
+        ),
+        (
+            r'SG\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}',
+            'SendGrid API Key detected',
+            'SendGrid keys should be stored using secrets! or environment variables.',
+        ),
+        (
+            r'xox[baprs]-[0-9]{10,}-[A-Za-z0-9]{10,}',
+            'Slack Bot/User Token detected',
+            'Slack tokens should be stored using secrets! or environment variables.',
+        ),
+        (
+            r'ATIA[A-Za-z0-9_-]{30,}',
+            'Atlassian API Token detected',
+            'Atlassian tokens should be stored using secrets! or environment variables.',
+        ),
+        (
+            r'ABK[A-Za-z0-9_-]{30,}',
+            'Amazon Selling Partner API Key detected',
+            'Amazon API keys should be stored using secrets! or environment variables.',
+        ),
+    ]
+
+    # Patterns for detecting hardcoded URLs and IP addresses
+    HARDCODED_URL_IP_PATTERNS = [
+        {
+            "pattern": r'https?://[A-Za-z0-9.-]+:[0-9]+',
+            "issue": "Hardcoded URL with port detected",
+            "recommendation": "Use !secret or environment variables for service endpoints. Consider using Home Assistant services discovery instead of hardcoded URLs.",
+            "severity": "medium",
+        },
+        {
+            "pattern": r'\b(?:192\.168\.\d{1,3}\.\d{1,3}|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3})\b',
+            "issue": "Private IP address detected in configuration",
+            "recommendation": "Use Home Assistant service discovery or !secret for internal service endpoints. Avoid hardcoding network addresses.",
+            "severity": "low",
+        },
+        {
+            "pattern": r'\b(?:127\.\d{1,3}\.\d{1,3}\.\d{1,3}|::1|0:0:0:0:0:0:0:1)\b',
+            "issue": "Loopback address (localhost) detected",
+            "recommendation": "Use service names or Home Assistant's built-in discovery instead of hardcoded localhost addresses.",
+            "severity": "low",
+        },
+        {
+            "pattern": r'ftp://[A-Za-z0-9.-]+',
+            "issue": "FTP URL detected - insecure file transfer protocol",
+            "recommendation": "Use SFTP or HTTPS instead of FTP for secure file transfers. Store credentials using secrets!",
+            "severity": "high",
+        },
+        {
+            "pattern": r'http://(?!localhost)(?!127\.0\.0\.1)[A-Za-z0-9.-]+',
+            "issue": "Insecure HTTP URL detected (not localhost)",
+            "recommendation": "Use HTTPS instead of HTTP for external communications to ensure data is encrypted in transit.",
+            "severity": "medium",
+        },
+        {
+            "pattern": r'(?i)(api[_-]?key|secret[_-]?key|access[_-]?token)\s*[:=]\s*["\']https?://[A-Za-z0-9.-]+',
+            "issue": "Credential with embedded URL detected",
+            "recommendation": "Separate credentials from URLs. Use !secret for credentials and separate configuration for endpoints.",
+            "severity": "high",
+        },
+    ]
+
+    # Remediation suggestions for common security issues
+    REMEDIATION_SUGGESTIONS = {
+        "hardcoded_password": {
+            "suggestion": "Use Home Assistant's secrets management:",
+            "examples": [
+                "In configuration.yaml: password: !secret my_password",
+                "In .secrets file: my_password=your_actual_password",
+                "Alternative: Use environment variable with !env_var MY_PASSWORD",
+            ],
+        },
+        "hardcoded_api_key": {
+            "suggestion": "Store API keys securely:",
+            "examples": [
+                "In configuration.yaml: api_key: !secret api_key_value",
+                "In .secrets file: api_key_value=your_api_key_here",
+                "For multiple keys: Use !include_dir_named secrets/ directory",
+            ],
+        },
+        "hardcoded_token": {
+            "suggestion": "Use secure token storage:",
+            "examples": [
+                "In configuration.yaml: token: !secret my_token",
+                "Use !secret for all authentication tokens",
+                "Rotate tokens regularly and update .secrets file",
+            ],
+        },
+        "hardcoded_url": {
+            "suggestion": "Use configuration management for URLs:",
+            "examples": [
+                "In configuration.yaml: endpoint: !secret api_endpoint",
+                "Use Home Assistant's built-in service discovery when possible",
+                "Consider using template helpers for dynamic endpoints",
+            ],
+        },
+        "exposed_credential": {
+            "suggestion": "Immediate actions required:",
+            "examples": [
+                "Rotate the exposed credential immediately",
+                "Move to secrets management (!secret or !include_dir_named)",
+                "Review .secrets file permissions (should be 600)",
+                "Add .secrets to .gitignore if using version control",
+            ],
+        },
+    }
+
     # Overly permissive configurations
     PERMISSIVE_PATTERNS = [
         {
@@ -451,6 +620,7 @@ Please provide:
         """Check for credentials in a configuration string."""
         issues = []
 
+        # Check basic credential patterns
         for pattern, description in self.CREDENTIAL_PATTERNS:
             matches = re.finditer(pattern, config_str, re.IGNORECASE)
             for match in matches:
@@ -471,6 +641,46 @@ Please provide:
                         evidence=original,
                     )
                 )
+
+        # Check API key format patterns (GitHub tokens, AWS keys, etc.)
+        for pattern, description, recommendation in self.API_KEY_FORMAT_PATTERNS:
+            matches = re.finditer(pattern, config_str)
+            for match in matches:
+                original = match.group(0)
+                issues.append(
+                    SecurityIssue(
+                        issue_type="known_credential_format",
+                        severity="critical",
+                        description=f"{description}: {original[:20]}***",
+                        recommendation=recommendation,
+                        affected_entity=config_id,
+                        evidence=original,
+                    )
+                )
+
+        # Check for hardcoded URLs and IPs
+        for url_pattern in self.HARDCODED_URL_IP_PATTERNS:
+            matches = re.finditer(
+                url_pattern["pattern"], config_str, re.IGNORECASE
+            )
+            for match in matches:
+                issues.append(
+                    SecurityIssue(
+                        issue_type="hardcoded_url_or_ip",
+                        severity=url_pattern.get("severity", "medium"),
+                        description=url_pattern["issue"],
+                        recommendation=url_pattern["recommendation"],
+                        affected_entity=config_id,
+                        evidence=f"Matched: {match.group(0)}",
+                    )
+                )
+
+        # Add remediation suggestions for found issues
+        if issues:
+            _LOGGER.warning(
+                "Security issues found in %s - remediation suggestions available",
+                config_id,
+            )
 
         return issues
 

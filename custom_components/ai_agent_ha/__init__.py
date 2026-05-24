@@ -14,8 +14,9 @@ from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.typing import ConfigType
 
 from .agent import AiAgentHaAgent
-from .const import DOMAIN
+from .const import DOMAIN, CONF_AUDIT_LOG_ENABLED, CONF_AUDIT_LOG_RETENTION_DAYS, CONF_AUDIT_LOG_MAX_ENTRIES, CONF_AUDIT_LOG_PERSISTENCE_ENABLED
 from .chat_history import ChatHistoryManager
+from .audit_log import AuditLogManager, RetentionPolicy
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -364,6 +365,42 @@ ADD_TAG_SCHEMA = vol.Schema(
     }
 )
 
+# Audit Log schemas
+GET_AUDIT_LOGS_SCHEMA = vol.Schema(
+    {
+        vol.Optional("action_type"): cv.string,
+        vol.Optional("severity"): cv.string,
+        vol.Optional("component"): cv.string,
+        vol.Optional("start_time"): cv.string,
+        vol.Optional("end_time"): cv.string,
+        vol.Optional("entity"): cv.string,
+        vol.Optional("provider"): cv.string,
+        vol.Optional("limit", default=100): vol.All(int, vol.Range(min=1, max=10000)),
+        vol.Optional("offset", default=0): vol.All(int, vol.Range(min=0)),
+    }
+)
+
+GET_AUDIT_LOG_STATISTICS_SCHEMA = vol.Schema({})
+
+EXPORT_AUDIT_LOGS_SCHEMA = vol.Schema(
+    {
+        vol.Optional("format_type", default="json"): vol.In(["json", "csv"]),
+        vol.Optional("action_type"): cv.string,
+        vol.Optional("start_time"): cv.string,
+        vol.Optional("end_time"): cv.string,
+    }
+)
+
+CLEAR_AUDIT_LOGS_SCHEMA = vol.Schema({})
+
+CLEAR_OLD_AUDIT_LOGS_SCHEMA = vol.Schema(
+    {
+        vol.Optional("days_threshold", default=30): vol.All(
+            vol.Coerce(int), vol.Range(min=1, max=365)
+        ),
+    }
+)
+
 
 async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Migrate old config entries to new version."""
@@ -451,6 +488,42 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         # Initialize chat history manager
         if "chat_history_manager" not in hass.data[DOMAIN]:
             hass.data[DOMAIN]["chat_history_manager"] = ChatHistoryManager(hass)
+        
+        # Initialize audit log manager
+        if "audit_log_manager" not in hass.data[DOMAIN]:
+            from .const import (
+                DEFAULT_AUDIT_LOG_ENABLED,
+                DEFAULT_AUDIT_LOG_RETENTION_DAYS,
+                DEFAULT_AUDIT_LOG_MAX_ENTRIES,
+                DEFAULT_AUDIT_LOG_PERSISTENCE_ENABLED,
+            )
+            audit_log_enabled = entry.options.get(
+                CONF_AUDIT_LOG_ENABLED,
+                entry.data.get(CONF_AUDIT_LOG_ENABLED, DEFAULT_AUDIT_LOG_ENABLED)
+            )
+            if audit_log_enabled:
+                retention_policy = RetentionPolicy(
+                    max_age_days=entry.options.get(
+                        CONF_AUDIT_LOG_RETENTION_DAYS,
+                        entry.data.get(CONF_AUDIT_LOG_RETENTION_DAYS, DEFAULT_AUDIT_LOG_RETENTION_DAYS)
+                    ),
+                    max_entries=entry.options.get(
+                        CONF_AUDIT_LOG_MAX_ENTRIES,
+                        entry.data.get(CONF_AUDIT_LOG_MAX_ENTRIES, DEFAULT_AUDIT_LOG_MAX_ENTRIES)
+                    ),
+                )
+                hass.data[DOMAIN]["audit_log_manager"] = AuditLogManager(
+                    hass,
+                    retention_policy=retention_policy,
+                    persistence_enabled=entry.options.get(
+                        CONF_AUDIT_LOG_PERSISTENCE_ENABLED,
+                        entry.data.get(CONF_AUDIT_LOG_PERSISTENCE_ENABLED, DEFAULT_AUDIT_LOG_PERSISTENCE_ENABLED)
+                    ),
+                )
+                _LOGGER.info("Audit log manager initialized successfully")
+            else:
+                hass.data[DOMAIN]["audit_log_manager"] = None
+                _LOGGER.info("Audit log disabled")
 
         _LOGGER.info("Successfully set up AI Agent HA for provider: %s", provider)
 
@@ -2457,6 +2530,133 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.services.async_register(DOMAIN, "deny_permission", async_handle_deny_permission, schema=DENY_PERMISSION_SCHEMA)
     hass.services.async_register(DOMAIN, "get_pending_permissions", async_handle_get_pending_permissions, schema=GET_PENDING_PERMISSIONS_SCHEMA)
 
+    # Audit Log services
+    async def async_handle_get_audit_logs(call):
+        """Handle the get_audit_logs service call."""
+        try:
+            audit_manager = hass.data[DOMAIN].get("audit_log_manager")
+            if not audit_manager:
+                return {
+                    "success": False,
+                    "error": "Audit log manager not initialized",
+                    "entries": [],
+                    "total": 0,
+                }
+            
+            result = audit_manager.get_entries(
+                action_type=call.data.get("action_type"),
+                severity=call.data.get("severity"),
+                component=call.data.get("component"),
+                start_time=call.data.get("start_time"),
+                end_time=call.data.get("end_time"),
+                entity=call.data.get("entity"),
+                provider=call.data.get("provider"),
+                limit=call.data.get("limit", 100),
+                offset=call.data.get("offset", 0),
+            )
+            
+            return {
+                "success": True,
+                "entries": [e.to_dict() for e in result["entries"]],
+                "total": result["total"],
+                "limit": result["limit"],
+                "offset": result["offset"],
+            }
+        except Exception as e:
+            _LOGGER.error("Error getting audit logs: %s", str(e))
+            return {"success": False, "error": str(e), "entries": [], "total": 0}
+
+    async def async_handle_get_audit_log_statistics(call):
+        """Handle the get_audit_log_statistics service call."""
+        try:
+            audit_manager = hass.data[DOMAIN].get("audit_log_manager")
+            if not audit_manager:
+                return {
+                    "success": False,
+                    "error": "Audit log manager not initialized",
+                }
+            
+            stats = audit_manager.get_statistics()
+            return {
+                "success": True,
+                "statistics": stats,
+            }
+        except Exception as e:
+            _LOGGER.error("Error getting audit log statistics: %s", str(e))
+            return {"success": False, "error": str(e)}
+
+    async def async_handle_export_audit_logs(call):
+        """Handle the export_audit_logs service call."""
+        try:
+            audit_manager = hass.data[DOMAIN].get("audit_log_manager")
+            if not audit_manager:
+                return {
+                    "success": False,
+                    "error": "Audit log manager not initialized",
+                }
+            
+            export_data = audit_manager.export_logs(
+                format_type=call.data.get("format_type", "json"),
+                action_type=call.data.get("action_type"),
+                start_time=call.data.get("start_time"),
+                end_time=call.data.get("end_time"),
+            )
+            
+            return {
+                "success": True,
+                "export_data": export_data,
+                "format": call.data.get("format_type", "json"),
+            }
+        except Exception as e:
+            _LOGGER.error("Error exporting audit logs: %s", str(e))
+            return {"success": False, "error": str(e)}
+
+    async def async_handle_clear_audit_logs(call):
+        """Handle the clear_audit_logs service call."""
+        try:
+            audit_manager = hass.data[DOMAIN].get("audit_log_manager")
+            if not audit_manager:
+                return {
+                    "success": False,
+                    "error": "Audit log manager not initialized",
+                }
+            
+            count = audit_manager.clear_all()
+            return {
+                "success": True,
+                "entries_cleared": count,
+            }
+        except Exception as e:
+            _LOGGER.error("Error clearing audit logs: %s", str(e))
+            return {"success": False, "error": str(e)}
+
+    async def async_handle_clear_old_audit_logs(call):
+        """Handle the clear_old_audit_logs service call."""
+        try:
+            audit_manager = hass.data[DOMAIN].get("audit_log_manager")
+            if not audit_manager:
+                return {
+                    "success": False,
+                    "error": "Audit log manager not initialized",
+                }
+            
+            days = call.data.get("days_threshold", 30)
+            count = audit_manager.clear_old_entries(days)
+            return {
+                "success": True,
+                "entries_cleared": count,
+                "days_threshold": days,
+            }
+        except Exception as e:
+            _LOGGER.error("Error clearing old audit logs: %s", str(e))
+            return {"success": False, "error": str(e)}
+
+    hass.services.async_register(DOMAIN, "get_audit_logs", async_handle_get_audit_logs, schema=GET_AUDIT_LOGS_SCHEMA)
+    hass.services.async_register(DOMAIN, "get_audit_log_statistics", async_handle_get_audit_log_statistics, schema=GET_AUDIT_LOG_STATISTICS_SCHEMA)
+    hass.services.async_register(DOMAIN, "export_audit_logs", async_handle_export_audit_logs, schema=EXPORT_AUDIT_LOGS_SCHEMA)
+    hass.services.async_register(DOMAIN, "clear_audit_logs", async_handle_clear_audit_logs, schema=CLEAR_AUDIT_LOGS_SCHEMA)
+    hass.services.async_register(DOMAIN, "clear_old_audit_logs", async_handle_clear_old_audit_logs, schema=CLEAR_OLD_AUDIT_LOGS_SCHEMA)
+
     # Register static path for frontend
     await hass.http.async_register_static_paths(
         [
@@ -2577,6 +2777,12 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.services.async_remove(DOMAIN, "approve_permission")
     hass.services.async_remove(DOMAIN, "deny_permission")
     hass.services.async_remove(DOMAIN, "get_pending_permissions")
+    # Remove Audit Log services
+    hass.services.async_remove(DOMAIN, "get_audit_logs")
+    hass.services.async_remove(DOMAIN, "get_audit_log_statistics")
+    hass.services.async_remove(DOMAIN, "export_audit_logs")
+    hass.services.async_remove(DOMAIN, "clear_audit_logs")
+    hass.services.async_remove(DOMAIN, "clear_old_audit_logs")
     # Remove data
     if DOMAIN in hass.data:
         hass.data.pop(DOMAIN)

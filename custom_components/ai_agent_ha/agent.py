@@ -169,6 +169,22 @@ class BaseAIClient:
     async def get_response(self, messages, **kwargs):
         raise NotImplementedError
 
+    async def get_streaming_response(self, messages, **kwargs):
+        """Generator that yields streaming response chunks/tokens.
+        
+        Args:
+            messages: List of message dicts with 'role' and 'content' keys
+            **kwargs: Additional arguments passed to the provider
+            
+        Yields:
+            str: Response chunks/tokens as they arrive
+            
+        Note:
+            Default implementation raises NotImplementedError.
+            Subclasses should override this to provide streaming support.
+        """
+        raise NotImplementedError("Streaming not implemented for this client")
+
 
 class LocalOllamaClient(BaseAIClient):
     """Client for Ollama-style local models using /api/generate style endpoints."""
@@ -936,6 +952,242 @@ class OpenAIClient(BaseAIClient):
                 _LOGGER.debug("Full OpenAI response: %s", json.dumps(data, indent=2))
                 return str(data)
 
+    async def get_streaming_response(self, messages, **kwargs):
+        """Async generator that yields streaming response chunks using Chat Completions API.
+        
+        Uses the OpenAI Chat Completions API (/v1/chat/completions) with streaming enabled,
+        which returns Server-Sent Events (SSE) containing partial response chunks.
+        
+        Args:
+            messages: List of message dicts with 'role' and 'content' keys
+            **kwargs: Additional arguments (temperature, max_tokens, etc.)
+            
+        Yields:
+            str: Response chunks/tokens as they arrive from the API
+            
+        Raises:
+            Exception: If the API returns an error or connection fails
+            
+        Example:
+            async for chunk in client.get_streaming_response(messages):
+                print(chunk, end="", flush=True)
+        """
+        _LOGGER.debug(
+            "Starting streaming request to OpenAI API with model: %s", self.model
+        )
+
+        # Validate token
+        if not self.token or not self.token.startswith("sk-"):
+            raise Exception("Invalid OpenAI API key format")
+
+        # Determine the streaming endpoint (Chat Completions API)
+        if self.api_url.endswith("/responses"):
+            # Convert /responses endpoint to /chat/completions for streaming
+            chat_completions_url = self.api_url.replace("/responses", "/chat/completions")
+        else:
+            chat_completions_url = self.api_url.rstrip("/") + "/chat/completions"
+
+        _LOGGER.debug("Using streaming endpoint: %s", chat_completions_url)
+
+        headers = {
+            "Authorization": f"Bearer {self.token}",
+            "Content-Type": "application/json",
+        }
+
+        # Build messages array for Chat Completions API
+        # Convert the simple format to proper OpenAI message format
+        openai_messages = []
+        for msg in messages:
+            role = (msg.get("role") or "user").lower()
+            content = msg.get("content") or ""
+            
+            # Map roles to OpenAI message format
+            if role == "system":
+                openai_messages.append({"role": "system", "content": content})
+            elif role == "user":
+                openai_messages.append({"role": "user", "content": content})
+            elif role == "assistant":
+                openai_messages.append({"role": "assistant", "content": content})
+            else:
+                openai_messages.append({"role": "user", "content": content})
+
+        # Build streaming payload
+        payload = {
+            "model": self.model,
+            "messages": openai_messages,
+            "stream": True,  # Enable streaming
+        }
+
+        # Pass through optional parameters from kwargs
+        if "temperature" in kwargs:
+            payload["temperature"] = kwargs["temperature"]
+        if "max_tokens" in kwargs:
+            payload["max_tokens"] = kwargs["max_tokens"]
+        if "top_p" in kwargs:
+            payload["top_p"] = kwargs["top_p"]
+
+        _LOGGER.debug("Streaming request payload: %s", json.dumps(payload, indent=2))
+
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    chat_completions_url,
+                    headers=headers,
+                    json=payload,
+                    timeout=aiohttp.ClientTimeout(total=300),
+                ) as resp:
+                    _LOGGER.debug("Streaming response status: %d", resp.status)
+
+                    if resp.status != 200:
+                        error_text = await resp.text()
+                        _LOGGER.error(
+                            "Streaming API error %d: %s", resp.status, error_text
+                        )
+                        raise Exception(
+                            f"Streaming API error {resp.status}: {error_text}"
+                        )
+
+                    # Process SSE stream
+                    chunk_count = 0
+                    full_response = []
+                    async for line in resp.content:
+                        line = line.decode("utf-8").strip()
+                        if not line:
+                            continue
+
+                        # Parse SSE data line
+                        if line.startswith("data: "):
+                            data_str = line[6:]  # Remove "data: " prefix
+                            
+                            # Check for end of stream
+                            if data_str.strip() == "[DONE]":
+                                _LOGGER.debug(
+                                    "Stream completed. Received %d chunks", chunk_count
+                                )
+                                # Yield a special marker to indicate completion
+                                yield {"type": "done", "content": ""}
+                                break
+
+                            try:
+                                data = json.loads(data_str)
+                                chunk_count += 1
+
+                                # Extract content delta from the chunk
+                                choices = data.get("choices", [])
+                                if choices:
+                                    delta = choices[0].get("delta", {})
+                                    content = delta.get("content")
+                                    
+                                    if content:
+                                        full_response.append(content)
+                                        # Yield the content chunk
+                                        yield {
+                                            "type": "chunk",
+                                            "content": content,
+                                            "chunk_index": chunk_count,
+                                        }
+
+                            except json.JSONDecodeError as e:
+                                _LOGGER.debug(
+                                    "Failed to parse SSE chunk: %s - Error: %s",
+                                    data_str[:100],
+                                    str(e),
+                                )
+                                continue
+
+                    _LOGGER.debug(
+                        "Streaming complete. Total chunks: %d, Full response length: %d",
+                        chunk_count,
+                        len("".join(full_response)),
+                    )
+
+        except aiohttp.ClientError as e:
+            _LOGGER.error("Connection error during streaming: %s", str(e))
+            yield {
+                "type": "error",
+                "content": f"Connection error: {str(e)}",
+                "error": str(e),
+            }
+        except asyncio.TimeoutError:
+            _LOGGER.error("Timeout during streaming request")
+            yield {
+                "type": "error",
+                "content": "Request timed out",
+                "error": "timeout",
+            }
+        except Exception as e:
+            _LOGGER.error("Unexpected error during streaming: %s", str(e))
+            yield {
+                "type": "error",
+                "content": f"Unexpected error: {str(e)}",
+                "error": str(e),
+            }
+
+    async def parse_streaming_response(self, chunks):
+        """Async generator to collect and parse streaming response chunks.
+        
+        This method can be used when you want to collect all chunks and
+        handle partial JSON parsing for streaming responses.
+        
+        Args:
+            chunks: Async iterator yielding chunk dicts
+            
+        Yields:
+            dict: Contains 'content' (full response), 'is_valid_json' (bool),
+                  and 'parsed_json' (if valid JSON was detected)
+        """
+        content_parts = []
+        is_json_mode = False
+        
+        async for chunk in chunks:
+            if chunk.get("type") == "chunk":
+                content = chunk.get("content", "")
+                content_parts.append(content)
+                
+                # Check if we're dealing with JSON response
+                combined = "".join(content_parts)
+                if combined.strip().startswith("{"):
+                    is_json_mode = True
+                    # Try to parse complete JSON objects
+                    try:
+                        parsed = json.loads(combined)
+                        yield {
+                            "type": "json_complete",
+                            "content": combined,
+                            "parsed_json": parsed,
+                        }
+                    except json.JSONDecodeError:
+                        # Partial JSON, continue collecting
+                        yield {
+                            "type": "json_partial",
+                            "content": combined,
+                            "parsed_json": None,
+                        }
+            elif chunk.get("type") == "done":
+                yield {"type": "stream_done", "content": "".join(content_parts)}
+            elif chunk.get("type") == "error":
+                yield {"type": "stream_error", "content": chunk.get("content", "")}
+                break
+        
+        # Return final collected content
+        full_content = "".join(content_parts)
+        result = {
+            "type": "stream_complete",
+            "content": full_content,
+            "is_valid_json": False,
+            "parsed_json": None,
+        }
+        
+        if is_json_mode:
+            try:
+                parsed = json.loads(full_content)
+                result["is_valid_json"] = True
+                result["parsed_json"] = parsed
+            except json.JSONDecodeError:
+                pass
+        
+        yield result
+
 
 class GeminiClient(BaseAIClient):
     def __init__(self, token, model="gemini-2.5-flash"):
@@ -1056,6 +1308,152 @@ class GeminiClient(BaseAIClient):
                     )
                 return str(data)
 
+    async def get_streaming_response(self, messages, **kwargs):
+        """Async generator that yields streaming response chunks using Gemini API.
+        
+        Uses the Gemini API with streaming enabled via generateContent with
+        Server-Sent Events (SSE) streaming.
+        
+        Args:
+            messages: List of message dicts with 'role' and 'content' keys
+            **kwargs: Additional arguments (temperature, max_tokens, etc.)
+            
+        Yields:
+            dict: Streaming chunks with 'type', 'content' keys
+            
+        Raises:
+            Exception: If the API returns an error or connection fails
+        """
+        _LOGGER.debug(
+            "Starting streaming request to Gemini API with model: %s", self.model
+        )
+
+        # Validate token
+        if not self.token:
+            raise Exception("Missing Gemini API key")
+
+        headers = {"Content-Type": "application/json"}
+
+        # Convert OpenAI-style messages to Gemini format
+        gemini_contents = []
+        for message in messages:
+            role = message.get("role", "user")
+            content = message.get("content", "")
+
+            if role == "system":
+                if not gemini_contents:
+                    gemini_contents.append(
+                        {"role": "user", "parts": [{"text": f"System: {content}"}]}
+                    )
+                else:
+                    gemini_contents.append(
+                        {"role": "user", "parts": [{"text": f"System: {content}"}]}
+                    )
+            elif role == "user":
+                gemini_contents.append({"role": "user", "parts": [{"text": content}]})
+            elif role == "assistant":
+                gemini_contents.append({"role": "model", "parts": [{"text": content}]})
+
+        payload = {
+            "contents": gemini_contents,
+            "generationConfig": {
+                "temperature": kwargs.get("temperature", 0.7),
+                "topP": kwargs.get("top_p", 0.9),
+            },
+        }
+
+        # Add API key as query parameter (URL encoded)
+        url_with_key = f"{self.api_url}?key={quote(self.token)}"
+
+        _LOGGER.debug("Gemini streaming request payload: %s", json.dumps(payload, indent=2))
+
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    url_with_key,
+                    headers=headers,
+                    json=payload,
+                    timeout=aiohttp.ClientTimeout(total=300),
+                ) as resp:
+                    _LOGGER.debug("Gemini streaming response status: %d", resp.status)
+
+                    if resp.status != 200:
+                        error_text = await resp.text()
+                        _LOGGER.error(
+                            "Gemini streaming API error %d: %s", resp.status, error_text
+                        )
+                        yield {
+                            "type": "error",
+                            "content": f"Gemini API error {resp.status}: {error_text}",
+                            "error": error_text,
+                        }
+                        return
+
+                    chunk_count = 0
+                    full_response = []
+                    
+                    async for line in resp.content:
+                        line = line.decode("utf-8").strip()
+                        if not line:
+                            continue
+
+                        try:
+                            data = json.loads(line)
+                            chunk_count += 1
+
+                            # Extract text from Gemini streaming response
+                            candidates = data.get("candidates", [])
+                            if candidates:
+                                content_data = candidates[0].get("content", {})
+                                parts = content_data.get("parts", [])
+                                
+                                for part in parts:
+                                    text = part.get("text", "")
+                                    if text:
+                                        full_response.append(text)
+                                        yield {
+                                            "type": "chunk",
+                                            "content": text,
+                                            "chunk_index": chunk_count,
+                                        }
+
+                        except json.JSONDecodeError as e:
+                            _LOGGER.debug(
+                                "Failed to parse Gemini streaming chunk: %s - Error: %s",
+                                line[:100],
+                                str(e),
+                            )
+                            continue
+
+                    # Signal stream completion
+                    yield {
+                        "type": "done",
+                        "content": "".join(full_response),
+                        "chunk_count": chunk_count,
+                    }
+
+        except aiohttp.ClientError as e:
+            _LOGGER.error("Connection error during Gemini streaming: %s", str(e))
+            yield {
+                "type": "error",
+                "content": f"Connection error: {str(e)}",
+                "error": str(e),
+            }
+        except asyncio.TimeoutError:
+            _LOGGER.error("Timeout during Gemini streaming request")
+            yield {
+                "type": "error",
+                "content": "Request timed out",
+                "error": "timeout",
+            }
+        except Exception as e:
+            _LOGGER.error("Unexpected error during Gemini streaming: %s", str(e))
+            yield {
+                "type": "error",
+                "content": f"Unexpected error: {str(e)}",
+                "error": str(e),
+            }
+
 
 class AnthropicClient(BaseAIClient):
     def __init__(self, token, model="claude-sonnet-4-5-20250929"):
@@ -1172,6 +1570,137 @@ class OpenRouterClient(BaseAIClient):
                     return choices[0]["message"].get("content", str(data))
                 return str(data)
 
+    async def get_streaming_response(self, messages, **kwargs):
+        """Async generator that yields streaming response chunks using OpenRouter API.
+        
+        Uses the OpenRouter Chat Completions API with streaming enabled,
+        which returns Server-Sent Events (SSE) containing partial response chunks.
+        
+        Args:
+            messages: List of message dicts with 'role' and 'content' keys
+            **kwargs: Additional arguments (temperature, max_tokens, etc.)
+            
+        Yields:
+            dict: Streaming chunks with 'type', 'content' keys
+            
+        Raises:
+            Exception: If the API returns an error or connection fails
+        """
+        _LOGGER.debug(
+            "Starting streaming request to OpenRouter API with model: %s", self.model
+        )
+
+        headers = {
+            "Authorization": f"Bearer {self.token}",
+            "Content-Type": "application/json",
+            "HTTP-Referer": "https://home-assistant.io",
+            "X-Title": "Home Assistant AI Agent",
+        }
+
+        payload = {
+            "model": self.model,
+            "messages": messages,
+            "stream": True,
+            "temperature": kwargs.get("temperature", 0.7),
+            "top_p": kwargs.get("top_p", 0.9),
+        }
+
+        _LOGGER.debug("OpenRouter streaming request payload: %s", json.dumps(payload, indent=2))
+
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    self.api_url,
+                    headers=headers,
+                    json=payload,
+                    timeout=aiohttp.ClientTimeout(total=300),
+                ) as resp:
+                    _LOGGER.debug("OpenRouter streaming response status: %d", resp.status)
+
+                    if resp.status != 200:
+                        error_text = await resp.text()
+                        _LOGGER.error(
+                            "OpenRouter streaming API error %d: %s", resp.status, error_text
+                        )
+                        yield {
+                            "type": "error",
+                            "content": f"OpenRouter API error {resp.status}: {error_text}",
+                            "error": error_text,
+                        }
+                        return
+
+                    chunk_count = 0
+                    full_response = []
+                    
+                    async for line in resp.content:
+                        line = line.decode("utf-8").strip()
+                        if not line:
+                            continue
+
+                        # Parse SSE data line
+                        if line.startswith("data: "):
+                            data_str = line[6:]  # Remove "data: " prefix
+                            
+                            # Check for end of stream
+                            if data_str.strip() == "[DONE]":
+                                _LOGGER.debug(
+                                    "OpenRouter stream completed. Received %d chunks", chunk_count
+                                )
+                                yield {
+                                    "type": "done",
+                                    "content": "".join(full_response),
+                                    "chunk_count": chunk_count,
+                                }
+                                break
+
+                            try:
+                                data = json.loads(data_str)
+                                chunk_count += 1
+
+                                # Extract content delta from the chunk
+                                choices = data.get("choices", [])
+                                if choices:
+                                    delta = choices[0].get("delta", {})
+                                    content = delta.get("content")
+                                    
+                                    if content:
+                                        full_response.append(content)
+                                        yield {
+                                            "type": "chunk",
+                                            "content": content,
+                                            "chunk_index": chunk_count,
+                                        }
+
+                            except json.JSONDecodeError as e:
+                                _LOGGER.debug(
+                                    "Failed to parse OpenRouter streaming chunk: %s - Error: %s",
+                                    data_str[:100],
+                                    str(e),
+                                )
+                                continue
+
+        except aiohttp.ClientError as e:
+            _LOGGER.error("Connection error during OpenRouter streaming: %s", str(e))
+            yield {
+                "type": "error",
+                "content": f"Connection error: {str(e)}",
+                "error": str(e),
+            }
+        except asyncio.TimeoutError:
+            _LOGGER.error("Timeout during OpenRouter streaming request")
+            yield {
+                "type": "error",
+                "content": "Request timed out",
+                "error": "timeout",
+            }
+        except Exception as e:
+            _LOGGER.error("Unexpected error during OpenRouter streaming: %s", str(e))
+            yield {
+                "type": "error",
+                "content": f"Unexpected error: {str(e)}",
+                "error": str(e),
+            }
+
 
 class AlterClient(BaseAIClient):
     def __init__(self, token, model=""):
@@ -1281,6 +1810,7 @@ class AiAgentHaAgent:
             "You are an AI assistant integrated with Home Assistant.\n"
             "You can request specific data by using only these commands:\n"
             "- get_entity_state(entity_id): Get state of a specific entity\n"
+            "- get_entity_states_batch(entity_ids): Get states of multiple entities at once (batch operation)\n"
             "- get_entities_by_domain(domain): Get all entities in a domain\n"
             "- get_entities_by_device_class(device_class, domain?): Get entities with specific device_class (e.g., 'temperature', 'humidity', 'motion')\n"
             "- get_climate_related_entities(): Get all climate-related entities (climate.* entities + temperature/humidity sensors)\n"
@@ -2096,6 +2626,140 @@ class AiAgentHaAgent:
         except Exception as e:
             _LOGGER.exception("Error getting entity state: %s", str(e))
             return {"error": f"Error getting entity state: {str(e)}"}
+
+    async def _get_entity_area_info(self, entity_id: str) -> Optional[Dict]:
+        """Get area information for an entity (extracted from get_entity_state).
+        
+        This extracts the area lookup logic into a reusable helper for batch operations.
+        
+        Args:
+            entity_id: The entity ID to get area info for
+            
+        Returns:
+            Dictionary with 'area_id' and 'area_name' if found, None otherwise
+        """
+        try:
+            from homeassistant.helpers import area_registry as ar
+            from homeassistant.helpers import device_registry as dr
+            from homeassistant.helpers import entity_registry as er
+
+            entity_registry = er.async_get(self.hass)
+            device_registry = dr.async_get(self.hass)
+            area_registry = ar.async_get(self.hass)
+
+            if not entity_registry or not hasattr(entity_registry, "async_get"):
+                return None
+
+            entity_entry = entity_registry.async_get(entity_id)
+            if not entity_entry:
+                return None
+
+            # Check direct area assignment
+            if hasattr(entity_entry, "area_id") and entity_entry.area_id:
+                area_id = entity_entry.area_id
+                area_name = None
+                if area_registry and hasattr(area_registry, "async_get"):
+                    area_entry = area_registry.async_get(area_id)
+                    if area_entry:
+                        area_name = area_entry.name
+                return {"area_id": area_id, "area_name": area_name}
+
+            # Check device area
+            if (
+                hasattr(entity_entry, "device_id")
+                and entity_entry.device_id
+                and device_registry
+                and hasattr(device_registry, "async_get")
+            ):
+                device_entry = device_registry.async_get(entity_entry.device_id)
+                if device_entry and hasattr(device_entry, "area_id") and device_entry.area_id:
+                    area_id = device_entry.area_id
+                    area_name = None
+                    if area_registry and hasattr(area_registry, "async_get"):
+                        area_entry = area_registry.async_get(area_id)
+                        if area_entry:
+                            area_name = area_entry.name
+                    return {"area_id": area_id, "area_name": area_name}
+
+        except Exception as e:
+            _LOGGER.debug("Error getting area info for %s: %s", entity_id, e)
+
+        return None
+
+    async def get_entity_states_batch(
+        self, entity_ids: List[str]
+    ) -> Dict[str, Any]:
+        """Get the states of multiple entities in a single batch operation.
+        
+        This method efficiently retrieves states for multiple entities in one call,
+        reducing function call overhead and improving performance for multi-entity
+        operations.
+        
+        Args:
+            entity_ids: List of entity IDs to fetch states for
+            
+        Returns:
+            Dictionary with:
+            - entities: List of entity state dictionaries
+            - entity_ids_requested: Original requested IDs
+            - entity_ids_found: IDs that were found
+            - entity_ids_not_found: IDs that were not found
+            - error: Error message if batch operation failed
+            - success: Boolean indicating success
+        """
+        if not entity_ids or not isinstance(entity_ids, list):
+            return {"success": False, "error": "Invalid entity_ids parameter"}
+        
+        if len(entity_ids) == 0:
+            return {"success": True, "entities": [], "count": 0}
+        
+        # Validate entity IDs format
+        invalid_ids = [
+            eid for eid in entity_ids
+            if not isinstance(eid, str) or "." not in eid
+        ]
+        if invalid_ids:
+            return {"success": False, "error": f"Invalid entity IDs: {invalid_ids}"}
+        
+        result = {
+            "entities": [],
+            "entity_ids_requested": entity_ids,
+            "entity_ids_found": [],
+            "entity_ids_not_found": [],
+            "success": True,
+        }
+        
+        # Batch fetch all states
+        for entity_id in entity_ids:
+            state = self.hass.states.get(entity_id)
+            if state:
+                entity_data = {
+                    "entity_id": entity_id,
+                    "state": state.state,
+                    "attributes": state.attributes,
+                    "last_changed": str(state.last_changed),
+                    "last_updated": str(state.last_updated),
+                }
+                
+                # Include area information (reuse existing logic from get_entity_state)
+                area_info = await self._get_entity_area_info(entity_id)
+                if area_info:
+                    entity_data["area_id"] = area_info.get("area_id")
+                    entity_data["area_name"] = area_info.get("area_name")
+                
+                result["entities"].append(entity_data)
+                result["entity_ids_found"].append(entity_id)
+            else:
+                result["entity_ids_not_found"].append(entity_id)
+        
+        result["count"] = len(result["entities"])
+        _LOGGER.debug(
+            "Batch retrieval: requested %d entities, found %d, not found %d",
+            len(entity_ids),
+            len(result["entity_ids_found"]),
+            len(result["entity_ids_not_found"]),
+        )
+        return result
 
     # === Integration 4b: Performance Module - Data Cache for get_entities_by_domain ===
     async def get_entities_by_domain(self, domain: str) -> List[Dict[str, Any]]:
@@ -3856,6 +4520,7 @@ Then restart Home Assistant to see your new dashboard in the sidebar."""
                         # Check if this is a data request (either format)
                         data_request_types = [
                             "get_entity_state",
+                            "get_entity_states_batch",  # NEW: Batch entity state retrieval
                             "get_entities_by_domain",
                             "get_entities_by_device_class",
                             "get_climate_related_entities",
@@ -3910,6 +4575,10 @@ Then restart Home Assistant to see your new dashboard in the sidebar."""
                             if request_type == "get_entity_state":
                                 data = await self.get_entity_state(
                                     parameters.get("entity_id")
+                                )
+                            elif request_type == "get_entity_states_batch":
+                                data = await self.get_entity_states_batch(
+                                    parameters.get("entity_ids", [])
                                 )
                             elif request_type == "get_entities_by_domain":
                                 data = await self.get_entities_by_domain(

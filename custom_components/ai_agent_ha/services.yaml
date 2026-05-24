@@ -1304,3 +1304,75 @@ deny_permission:
 
 get_pending_permissions:
   description: "Get all pending permission requests"
+
+# Audit Log services
+get_audit_logs:
+  name: "Get Audit Logs"
+  description: "Retrieve audit log entries with optional filters."
+  fields:
+    action_type:
+      description: "Filter by action type (e.g., service_call, permission_check)."
+      example: "service_call"
+    severity:
+      description: "Filter by severity level (info, warning, error, critical)."
+      example: "warning"
+    component:
+      description: "Filter by component (e.g., permissions, agent)."
+      example: "permissions"
+    start_time:
+      description: "Filter by start time (ISO format)."
+      example: "2024-01-01T00:00:00"
+    end_time:
+      description: "Filter by end time (ISO format)."
+      example: "2024-12-31T23:59:59"
+    entity:
+      description: "Filter by target entity ID."
+      example: "light.living_room"
+    provider:
+      description: "Filter by AI provider."
+      example: "openai"
+    limit:
+      description: "Maximum number of entries to return."
+      example: 100
+      default: 100
+    offset:
+      description: "Offset for pagination."
+      example: 0
+      default: 0
+
+get_audit_log_statistics:
+  name: "Get Audit Log Statistics"
+  description: "Get statistics about audit logs."
+  fields: {}
+
+export_audit_logs:
+  name: "Export Audit Logs"
+  description: "Export audit logs in specified format."
+  fields:
+    format_type:
+      description: "Export format (json, csv)."
+      example: "json"
+      default: "json"
+    action_type:
+      description: "Optional filter by action type."
+      example: "service_call"
+    start_time:
+      description: "Optional start time filter (ISO format)."
+      example: "2024-01-01T00:00:00"
+    end_time:
+      description: "Optional end time filter (ISO format)."
+      example: "2024-12-31T23:59:59"
+
+clear_audit_logs:
+  name: "Clear Audit Logs"
+  description: "Clear all audit log entries."
+  fields: {}
+
+clear_old_audit_logs:
+  name: "Clear Old Audit Logs"
+  description: "Clear audit log entries older than specified days."
+  fields:
+    days_threshold:
+      description: "Number of days to retain."
+      example: 30
+      default: 30

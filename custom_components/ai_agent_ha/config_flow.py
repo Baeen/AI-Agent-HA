@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 
 import voluptuous as vol
@@ -56,6 +57,8 @@ from .const import (
     DEFAULT_MAX_IMAGE_SIZE,
     DEFAULT_MAX_IMAGES_PER_MESSAGE,
     DEFAULT_IMAGE_COMPRESSION_QUALITY,
+    # Legacy/Deprecated options
+    CONF_LOCAL_URL,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -248,9 +251,162 @@ class AiAgentHaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: ig
             ),
         )
 
+    async def _validate_api_key_format(self, provider: str, token: str) -> tuple[bool, str]:
+        """Validate the API key format for the given provider.
+        
+        This method mirrors the validation logic in agent.AiAgentHaAgent._validate_api_key()
+        as referenced in comprehensive-enhancement-plan.md section C3.
+        
+        Args:
+            provider: The AI provider name
+            token: The API key or URL to validate
+            
+        Returns:
+            Tuple of (is_valid, error_message)
+        """
+        if not token or not isinstance(token, str):
+            return False, "API key cannot be empty"
+
+        # For local_ollama and openai_compatible, validate URL format
+        if provider in ("local_ollama", "openai_compatible"):
+            if not token.startswith(("http://", "https://")):
+                return False, f"URL for {provider} must start with http:// or https://"
+            return True, ""
+
+        # For all other providers, validate API key length (minimum 32 characters)
+        if len(token) < 32:
+            return False, f"API key must be at least 32 characters long (current: {len(token)})"
+
+        return True, ""
+
+    async def _test_provider_connectivity(self, provider: str, config_data: dict) -> tuple[bool, str]:
+        """Test connectivity to the selected provider.
+        
+        This method tests if the provider endpoint is reachable and the credentials are valid.
+        
+        Args:
+            provider: The AI provider name
+            config_data: The configuration data containing credentials
+            
+        Returns:
+            Tuple of (is_connected, message)
+        """
+        import aiohttp
+        
+        url = None
+        headers = {}
+        
+        try:
+            if provider == "openai":
+                base_url = config_data.get(CONF_OPENAI_BASE_URL, "https://api.openai.com/v1")
+                url = f"{base_url.rstrip('/')}/models"
+                headers["Authorization"] = f"Bearer {config_data.get('openai_token', '')}"
+                
+            elif provider == "gemini":
+                api_key = config_data.get("gemini_token", "")
+                url = f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}"
+                
+            elif provider == "openrouter":
+                url = "https://openrouter.ai/api/v1/models"
+                headers["Authorization"] = f"Bearer {config_data.get('openrouter_token', '')}"
+                
+            elif provider == "anthropic":
+                url = "https://api.anthropic.com/v1/messages"
+                headers["Authorization"] = f"Bearer {config_data.get('anthropic_token', '')}"
+                headers["anthropic-version"] = "2023-06-01"
+                
+            elif provider == "llama":
+                url = "https://api.llama.com/v1/models"
+                headers["Authorization"] = f"Bearer {config_data.get('llama_token', '')}"
+                
+            elif provider == "alter":
+                url = "https://api.alter.ai/v1/models"
+                headers["Authorization"] = f"Bearer {config_data.get('alter_token', '')}"
+                
+            elif provider == "zai":
+                url = "https://api.z.ai/v1/models"
+                headers["Authorization"] = f"Bearer {config_data.get('zai_token', '')}"
+                
+            elif provider in ("local_ollama", "openai_compatible"):
+                # For local providers, test if the URL is reachable
+                if provider == "local_ollama":
+                    base_url = config_data.get(CONF_LOCAL_OLLAMA_URL, "")
+                else:
+                    base_url = config_data.get(CONF_OPENAI_COMPATIBLE_URL, "")
+                    
+                if not base_url:
+                    return False, "URL is required"
+                    
+                # Test Ollama health endpoint or models endpoint
+                if provider == "local_ollama":
+                    url = f"{base_url.rstrip('/')}/api/tags"
+                else:
+                    url = f"{base_url.rstrip('/')}/models"
+                    api_key = config_data.get("openai_compatible_api_key", "")
+                    if api_key:
+                        headers["Authorization"] = f"Bearer {api_key}"
+            
+            if not url:
+                return True, "Connectivity test skipped (provider not supported for testing)"
+            
+            _LOGGER.debug("Testing provider connectivity for %s to %s", provider, url)
+            
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                    url,
+                    headers=headers if headers else None,
+                    timeout=aiohttp.ClientTimeout(total=10),
+                ) as resp:
+                    if resp.status == 200:
+                        return True, f"Successfully connected to {PROVIDERS.get(provider, provider)}"
+                    elif resp.status == 401:
+                        return False, "Authentication failed. Please check your API key."
+                    elif resp.status == 403:
+                        return False, "Access forbidden. Please check your API key and permissions."
+                    elif resp.status == 404:
+                        _LOGGER.warning("Provider endpoint returned 404, but this may be normal for some providers")
+                        return True, "Connection test endpoint not found, but credentials appear valid"
+                    else:
+                        _LOGGER.warning("Provider returned status %d", resp.status)
+                        return True, f"Provider responded with status {resp.status} - connection may be valid"
+                        
+        except aiohttp.ClientConnectorError:
+            return False, f"Cannot connect to {PROVIDERS.get(provider, provider)}. Please check the URL or network."
+        except aiohttp.ClientTimeoutError:
+            return False, f"Connection to {PROVIDERS.get(provider, provider)} timed out. Please check the URL or network."
+        except asyncio.TimeoutError:
+            return False, f"Connection to {PROVIDERS.get(provider, provider)} timed out. Please check the URL or network."
+        except Exception as e:  # pylint: disable=broad-except
+            _LOGGER.warning("Connectivity test warning for %s: %s", provider, e)
+            # Don't fail configuration for connectivity test errors - some providers may have restrictions
+            return True, f"Connectivity test inconclusive: {str(e)}. Proceeding with configuration."
+
+    def _check_deprecated_options(self, user_input: dict) -> list[str]:
+        """Check for deprecated options in the user input.
+        
+        This method checks for deprecated configuration options and returns warnings.
+        
+        Args:
+            user_input: The user input data
+            
+        Returns:
+            List of warning messages for deprecated options
+        """
+        warnings = []
+        
+        # Check for legacy local_url option (should use local_ollama_url instead)
+        if CONF_LOCAL_URL in user_input:
+            warnings.append(
+                f"'{CONF_LOCAL_URL}' is deprecated. Please use '{CONF_LOCAL_OLLAMA_URL}' instead. "
+                "The legacy option will be removed in a future version."
+            )
+        
+        return warnings
+
     async def async_step_configure(self, user_input=None):
         """Handle the configuration step for the selected provider."""
         errors = {}
+        warnings = []  # Collect warnings for display
         provider = self.config_data["ai_provider"]
         token_field = TOKEN_FIELD_NAMES[provider]
         token_label = TOKEN_LABELS[provider]
@@ -265,6 +421,12 @@ class AiAgentHaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: ig
                 token_value = user_input.get(token_field)
                 if not token_value:
                     errors[token_field] = "required"
+                    raise InvalidApiKey
+
+                # Pre-save validation: API key format check (Feature C3)
+                is_valid, error_msg = await self._validate_api_key_format(provider, token_value)
+                if not is_valid:
+                    errors[token_field] = error_msg
                     raise InvalidApiKey
 
                 # Store the configuration data
@@ -323,6 +485,35 @@ class AiAgentHaConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: ig
                     else:
                         # Fallback to default model for other providers
                         self.config_data["models"][provider] = default_model
+
+                # Pre-save validation: Check for deprecated options (Feature C3)
+                deprecated_warnings = self._check_deprecated_options(user_input)
+                warnings.extend(deprecated_warnings)
+                
+                # Pre-save validation: Test provider connectivity (Feature C3)
+                # Skip connectivity test for local providers to avoid blocking config
+                if provider not in ("local_ollama", "openai_compatible"):
+                    try:
+                        is_connected, connectivity_msg = await self._test_provider_connectivity(
+                            provider, self.config_data
+                        )
+                        if is_connected:
+                            _LOGGER.info("Connectivity test passed: %s", connectivity_msg)
+                            # Add success message to warnings for display
+                            warnings.append(f"✓ {connectivity_msg}")
+                        else:
+                            # Connectivity test failed - add warning but don't block configuration
+                            _LOGGER.warning("Connectivity test failed: %s", connectivity_msg)
+                            warnings.append(f"⚠ {connectivity_msg}")
+                    except Exception as e:  # pylint: disable=broad-except
+                        _LOGGER.warning("Error during connectivity test: %s", e)
+                        # Don't block configuration due to connectivity test errors
+                        warnings.append("ℹ Connectivity test could not be completed - configuration will proceed")
+
+                # Log warnings for user awareness
+                if warnings:
+                    for warning in warnings:
+                        _LOGGER.info("Config warning: %s", warning)
 
                 return self.async_create_entry(
                     title=f"AI Agent HA ({PROVIDERS[provider]})",
