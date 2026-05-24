@@ -53,6 +53,14 @@ class AiAgentHaPanel extends LitElement {
       _showHistorySidebar: { type: Boolean, reflect: false, attribute: false },
       _conversationSearchQuery: { type: String, reflect: false, attribute: false },
       _contextMenu: { type: Object, reflect: false, attribute: false },
+      // UX Enhancement: Typing indicator
+      _showTypingIndicator: { type: Boolean },
+      // UX Enhancement: Error display
+      _errorMessage: { type: String },
+      _errorDetails: { type: String },
+      // UX Enhancement: Conversation status indicators
+      _saveStatus: { type: String },  // 'saving', 'saved', 'error', null
+      _loadStatus: { type: String },  // 'loading', 'loaded', 'error', null
     };
   }
 
@@ -1038,6 +1046,287 @@ class AiAgentHaPanel extends LitElement {
           box-shadow: 4px 0 16px rgba(0, 0, 0, 0.2);
         }
       }
+      
+      /* ========== UX Enhancement: Typing Indicator ========== */
+      .typing-indicator {
+        display: flex;
+        align-items: center;
+        padding: 8px 0;
+        gap: 4px;
+      }
+
+      .typing-indicator span {
+        animation: blink 1.4s infinite both;
+        font-size: 18px;
+        color: #666;
+      }
+
+      .typing-indicator span:nth-child(2) {
+        animation-delay: 0.2s;
+      }
+
+      .typing-indicator span:nth-child(3) {
+        animation-delay: 0.4s;
+      }
+
+      @keyframes blink {
+        0% { opacity: 0.2; }
+        20% { opacity: 1; }
+        100% { opacity: 0.2; }
+      }
+      
+      /* ========== UX Enhancement: Error Banner ========== */
+      .error-banner {
+        background: #ffebee;
+        border-left: 4px solid #f44336;
+        padding: 12px 16px;
+        margin: 8px 0;
+        border-radius: 4px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        animation: fadeIn 0.3s ease-out;
+      }
+
+      .error-banner .error-content {
+        flex-grow: 1;
+      }
+
+      .error-banner .error-message {
+        color: #c62828;
+        font-weight: 500;
+        margin-bottom: 4px;
+      }
+
+      .error-banner .error-details {
+        color: #e57373;
+        font-size: 13px;
+      }
+
+      .error-banner .retry-button {
+        margin-left: auto;
+        background: #f44336;
+        color: white;
+        border: none;
+        padding: 6px 12px;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 13px;
+        font-weight: 500;
+        white-space: nowrap;
+      }
+
+      .error-banner .retry-button:hover {
+        background: #d32f2f;
+      }
+      
+      /* ========== UX Enhancement: Skeleton Loading ========== */
+      .skeleton {
+        background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+        background-size: 200% 100%;
+        animation: skeleton-loading 1.5s infinite;
+        border-radius: 4px;
+      }
+
+      @keyframes skeleton-loading {
+        0% { background-position: 200% 0; }
+        100% { background-position: -200% 0; }
+      }
+
+      .skeleton-message {
+        height: 40px;
+        margin-bottom: 12px;
+        border-radius: 12px;
+      }
+
+      .skeleton-message:last-child {
+        margin-bottom: 0;
+      }
+      
+      /* ========== UX Enhancement: Action Cards ========== */
+      .action-card {
+        background: var(--primary-background-color);
+        border: 1px solid var(--divider-color);
+        border-radius: 8px;
+        padding: 12px;
+        margin: 8px 0;
+        transition: all 0.2s ease;
+      }
+
+      .action-card.success {
+        border-left: 4px solid #4caf50;
+      }
+
+      .action-card.error {
+        border-left: 4px solid #f44336;
+      }
+
+      .action-card.in-progress {
+        border-left: 4px solid #ff9800;
+      }
+
+      .action-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 8px;
+      }
+
+      .action-badge {
+        background: var(--secondary-background-color);
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-family: monospace;
+        font-size: 12px;
+        color: var(--primary-text-color);
+        font-weight: 500;
+      }
+
+      .action-status {
+        font-size: 16px;
+      }
+
+      .action-target {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 13px;
+        color: var(--secondary-text-color);
+        margin-top: 4px;
+      }
+
+      .action-target ha-icon {
+        --mdc-icon-size: 16px;
+        color: var(--primary-color);
+      }
+
+      .action-error {
+        color: #f44336;
+        font-size: 12px;
+        margin-top: 8px;
+        padding: 6px;
+        background: rgba(244, 67, 54, 0.1);
+        border-radius: 4px;
+      }
+      
+      /* ========== UX Enhancement: Action Progress ========== */
+      .action-progress {
+        background: var(--secondary-background-color);
+        border: 1px solid var(--divider-color);
+        border-radius: 8px;
+        padding: 12px;
+        margin: 8px 0;
+      }
+
+      .action-progress-header {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 8px;
+        font-size: 14px;
+        font-weight: 500;
+        color: var(--primary-text-color);
+      }
+
+      .action-progress-spinner {
+        width: 16px;
+        height: 16px;
+        border: 2px solid var(--primary-color);
+        border-top: 2px solid transparent;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+      }
+
+      @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+      }
+
+      .action-progress-bar {
+        height: 4px;
+        background: var(--primary-background-color);
+        border-radius: 2px;
+        overflow: hidden;
+        margin: 8px 0;
+      }
+
+      .action-progress-fill {
+        height: 100%;
+        background: var(--primary-color);
+        transition: width 0.3s ease;
+        border-radius: 2px;
+      }
+      
+      /* ========== UX Enhancement: Response Time ========== */
+      .response-meta {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        font-size: 11px;
+        color: var(--secondary-text-color);
+        margin-top: 6px;
+        padding-top: 6px;
+        border-top: 1px solid var(--divider-color);
+      }
+
+      .response-meta ha-icon {
+        --mdc-icon-size: 12px;
+      }
+      
+      /* ========== UX Enhancement: Message Status ========== */
+      .message-status {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        font-size: 11px;
+        margin-top: 4px;
+      }
+
+      .message-status.pending {
+        color: #ff9800;
+      }
+
+      .message-status.success {
+        color: #4caf50;
+      }
+
+      .message-status.error {
+        color: #f44336;
+      }
+
+      .status-spinner {
+        width: 12px;
+        height: 12px;
+        border: 2px solid #ff9800;
+        border-top: 2px solid transparent;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+      }
+      
+      /* ========== UX Enhancement: Save/Load Status ========== */
+      .status-indicator {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        font-size: 12px;
+        color: var(--secondary-text-color);
+      }
+
+      .status-indicator ha-icon {
+        --mdc-icon-size: 14px;
+      }
+
+      .status-indicator.saving {
+        color: #ff9800;
+      }
+
+      .status-indicator.saved {
+        color: #4caf50;
+      }
+
+      .status-indicator.loading {
+        color: #2196f3;
+      }
     `;
   }
 
@@ -1083,6 +1372,16 @@ class AiAgentHaPanel extends LitElement {
     this._showHistorySidebar = false;
     this._conversationSearchQuery = '';
     this._contextMenu = null;
+    
+    // UX Enhancement: Typing indicator
+    this._showTypingIndicator = false;
+    // UX Enhancement: Error display
+    this._errorMessage = null;
+    this._errorDetails = null;
+    // UX Enhancement: Conversation status indicators
+    this._saveStatus = null;
+    this._loadStatus = null;
+    
     console.debug("AI Agent HA Panel constructor called");
   }
 
@@ -1491,10 +1790,31 @@ class AiAgentHaPanel extends LitElement {
           <div class="content-area">
             <div class="chat-container">
               <div class="messages" id="messages">
+                <!-- UX Enhancement: Error Banner -->
+                ${this._errorMessage ? this._renderErrorBanner() : ''}
+                
+                <!-- UX Enhancement: Skeleton Loading -->
+                ${this._loadStatus === 'loading' ? this._renderSkeletonLoading() : ''}
+                
                 ${this._messages.map(msg => html`
                   <div class="message-container">
                     <div class="message ${msg.type}-message">
                       ${this._renderMessageContent(msg)}
+                      <!-- UX Enhancement: Message Status Indicator -->
+                      ${msg.status ? html`
+                        <div class="message-status ${msg.status}">
+                          ${msg.status === 'pending' ? html`
+                            <div class="status-spinner"></div>
+                            <span>Sending...</span>
+                          ` : msg.status === 'error' ? html`
+                            <ha-icon icon="mdi:alert-circle"></ha-icon>
+                            <span>Failed</span>
+                          ` : html`
+                            <ha-icon icon="mdi:check-circle"></ha-icon>
+                            <span>Sent</span>
+                          `}
+                        </div>
+                      ` : ''}
                       ${msg.automation ? html`
                       <div class="automation-suggestion">
                         <div class="automation-title">${msg.automation.alias}</div>
@@ -1545,6 +1865,8 @@ class AiAgentHaPanel extends LitElement {
                       <div class="dot"></div>
                     </div>
                   </div>
+                  <!-- UX Enhancement: Typing Indicator -->
+                  ${this._renderTypingIndicator()}
                 ` : ''}
                 ${this._error ? html`
                   <div class="error">${this._error}</div>
@@ -1758,26 +2080,59 @@ class AiAgentHaPanel extends LitElement {
   }
 
   /**
-   * Render a message with appropriate formatting
+   * Render a message with appropriate formatting and UX enhancements
    */
   _renderMessageContent(message) {
+    // Render action cards (UX Enhancement)
+    if (message.type === 'actionCard') {
+      return this._renderActionCard(message.action, message.index, message.total);
+    }
+    
     if (message.type === 'user') {
-      return html`<div class="message-content">${message.text}</div>`;
+      return html`
+        <div class="message-content">${message.text}</div>
+        ${message.timestamp ? html`
+          <div class="response-meta">
+            <span>${this._formatRelativeTime(message.timestamp)}</span>
+          </div>
+        ` : ''}
+      `;
     }
     
     // For action report messages, use special styling
     if (message.isActionReport) {
-      return html`<div class="message-content action-report">${message.text.replace(/\n/g, html`<br>`)}</div>`;
+      return html`
+        <div class="message-content action-report">${message.text.replace(/\n/g, html`<br>`)}</div>
+        ${message.timestamp ? html`
+          <div class="response-meta">
+            <span>${this._formatRelativeTime(message.timestamp)}</span>
+          </div>
+        ` : ''}
+      `;
     }
     
     // For assistant messages, check if markdown formatting is needed
     if (this._hasMarkdown(message.text)) {
       const htmlContent = this._formatMarkdown(message.text);
-      return html`<div class="message-content markdown-content" data-html=${htmlContent}></div>`;
+      return html`
+        <div class="message-content markdown-content" data-html=${htmlContent}></div>
+        ${message.timestamp ? html`
+          <div class="response-meta">
+            <span>${this._formatRelativeTime(message.timestamp)}</span>
+          </div>
+        ` : ''}
+      `;
     }
     
-    // Plain text with line breaks
-    return html`<div class="message-content">${message.text.replace(/\n/g, html`<br>`)}</div>`;
+    // Plain text with line breaks and response time
+    return html`
+      <div class="message-content">${message.text.replace(/\n/g, html`<br>`)}</div>
+      ${message.timestamp ? html`
+        <div class="response-meta">
+          <span>${this._formatRelativeTime(message.timestamp)}</span>
+        </div>
+      ` : ''}
+    `;
   }
 
   _autoResize(e) {
@@ -1786,7 +2141,29 @@ class AiAgentHaPanel extends LitElement {
     textarea.style.height = Math.min(textarea.scrollHeight, 200) + 'px';
   }
 
+  /**
+   * Handle key down events with keyboard shortcuts
+   * Ctrl/Cmd + Enter: Send message
+   * Escape: Close dropdowns/modals
+   * Enter: Send message (without modifier)
+   */
   _handleKeyDown(e) {
+    // Send message on Ctrl/Cmd + Enter
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+      e.preventDefault();
+      this._sendMessage();
+      return;
+    }
+    
+    // Close dropdowns on Escape
+    if (e.key === 'Escape') {
+      this._showProviderDropdown = false;
+      this._showContextMenu = false;
+      this.requestUpdate();
+      return;
+    }
+    
+    // Send message on Enter (without modifier)
     if (e.key === 'Enter' && !e.shiftKey && !this._isLoading) {
       e.preventDefault();
       this._sendMessage();
@@ -1811,6 +2188,9 @@ class AiAgentHaPanel extends LitElement {
     return provider ? provider.label : 'Select Model';
   }
 
+  /**
+   * Send message to AI with UX enhancements
+   */
   async _sendMessage() {
     const promptEl = this.shadowRoot.querySelector('#prompt');
     const prompt = promptEl.value.trim();
@@ -1823,15 +2203,20 @@ class AiAgentHaPanel extends LitElement {
     console.debug("Sending message with provider:", this._selectedProvider);
     console.debug("Attached images:", this._attachedImages.length);
 
+    // Track send start time for response time measurement
+    const sendStartTime = Date.now();
+
     // Add to history
     await this._addToHistory(prompt || '[Image only]');
 
-    // Add user message (with image indicators)
+    // Add user message with status tracking (UX Enhancement)
     const userDisplayText = prompt || '📷 Image attached';
     this._messages = [...this._messages, {
       type: 'user',
       text: userDisplayText,
-      images: this._attachedImages.map(img => img.data)
+      images: this._attachedImages.map(img => img.data),
+      status: 'pending',  // UX Enhancement: Message status
+      timestamp: sendStartTime
     }];
     
     promptEl.value = '';
@@ -1840,6 +2225,9 @@ class AiAgentHaPanel extends LitElement {
     this._error = null;
     this._debugInfo = null;
     this._thinkingExpanded = false; // keep collapsed until a trace arrives
+    
+    // Show typing indicator (UX Enhancement)
+    this._showTyping();
 
     // Clear any existing timeout
     if (this._serviceCallTimeout) {
@@ -1851,10 +2239,17 @@ class AiAgentHaPanel extends LitElement {
       if (this._isLoading) {
         console.warn("Service call timeout - clearing loading state");
         this._isLoading = false;
+        this._showTypingIndicator = false;
         this._error = 'Request timed out. Please try again.';
+        this._messages = this._messages.map((msg, i) =>
+          i === this._messages.length - 1
+            ? { ...msg, status: 'error' }
+            : msg
+        );
         this._messages = [...this._messages, {
           type: 'assistant',
-          text: 'Sorry, the request timed out. Please try again.'
+          text: 'Sorry, the request timed out. Please try again.',
+          timestamp: Date.now()
         }];
         this.requestUpdate();
       }
@@ -1878,10 +2273,19 @@ class AiAgentHaPanel extends LitElement {
     } catch (error) {
       console.error("Error calling service:", error);
       this._clearLoadingState();
+      this._showTypingIndicator = false;
       this._error = error.message || 'An error occurred while processing your request';
+      
+      // Update message status to error
+      this._messages = this._messages.map((msg, i) =>
+        i === this._messages.length - 1
+          ? { ...msg, status: 'error' }
+          : msg
+      );
       this._messages = [...this._messages, {
         type: 'assistant',
-        text: `Error: ${this._error}`
+        text: `Error: ${this._error}`,
+        timestamp: Date.now()
       }];
     }
     
@@ -2004,6 +2408,9 @@ class AiAgentHaPanel extends LitElement {
     }
   }
 
+  /**
+   * Handle AI response from backend event
+   */
   _handleLlamaResponse(event) {
     console.debug("Received llama response:", event);
     
@@ -2013,13 +2420,22 @@ class AiAgentHaPanel extends LitElement {
       if (this._showThinking && this._debugInfo) {
         this._thinkingExpanded = true;
       }
+      
+      // Hide typing indicator (UX Enhancement)
+      this._hideTyping();
+      
+      // Calculate response time (UX Enhancement)
+      const responseStartTime = event.data.response_time || Date.now();
+      const responseTimeMs = Date.now() - responseStartTime;
+
     if (event.data.success) {
       // DEBUG: Log the full response data for debugging empty responses
-      console.debug("=== FRONTEND RESPONSE DEBUG === success=%s, answer=%s, answer_length=%d, answer_preview=%s, full_event_data=%s",
+      console.debug("=== FRONTEND RESPONSE DEBUG === success=%s, answer=%s, answer_length=%d, answer_preview=%s, response_time=%dms, full_event_data=%s",
         event.data.success,
         typeof event.data.answer,
         event.data.answer ? event.data.answer.length : 0,
         event.data.answer ? JSON.stringify(event.data.answer.toString().slice(0, 200)) : "None",
+        responseTimeMs,
         JSON.stringify(event.data, (key, value) => key === 'debug' ? '[debug omitted]' : value, 2)
       );
       // Check if the answer is empty
@@ -2031,12 +2447,22 @@ class AiAgentHaPanel extends LitElement {
         console.warn("AI agent returned empty response");
         this._messages = [
           ...this._messages,
-          { type: 'assistant', text: 'I received your message but I\'m not sure how to respond. Could you please try rephrasing your question?' }
+          {
+            type: 'assistant',
+            text: 'I received your message but I\'m not sure how to respond. Could you please try rephrasing your question?',
+            timestamp: Date.now()
+          }
         ];
+        // Update previous user message status to success
+        this._messages = this._messages.map((msg, i) =>
+          i === this._messages.length - 2 && msg.type === 'user'
+            ? { ...msg, status: 'success' }
+            : msg
+        );
         return;
       }
 
-      let message = { type: 'assistant', text: event.data.answer };
+      let message = { type: 'assistant', text: event.data.answer, timestamp: Date.now() };
 
       // Check if the response contains an automation or dashboard suggestion
       try {
@@ -2089,6 +2515,13 @@ class AiAgentHaPanel extends LitElement {
       
       this._messages = [...this._messages, message];
       
+      // Update the last user message status to success (UX Enhancement)
+      this._messages = this._messages.map((msg, i) =>
+        i === this._messages.length - 2 && msg.type === 'user'
+          ? { ...msg, status: 'success' }
+          : msg
+      );
+      
       // If there are action details, add a separate message showing the actions performed
       if (event.data.action_details && Array.isArray(event.data.action_details) && event.data.action_details.length > 0) {
         const actionMessages = this._formatActionDetails(event.data.action_details);
@@ -2098,10 +2531,23 @@ class AiAgentHaPanel extends LitElement {
       // Auto-save the current conversation after receiving a response
       this._saveCurrentConversation();
     } else {
+      this._showTypingIndicator = false;
       this._error = event.data.error || 'An error occurred';
+      
+      // Update previous user message status to error
+      this._messages = this._messages.map((msg, i) =>
+        i === this._messages.length - 1 && msg.type === 'user'
+          ? { ...msg, status: 'error' }
+          : msg
+      );
+      
       this._messages = [
         ...this._messages,
-        { type: 'assistant', text: `Error: ${this._error}` }
+        {
+          type: 'assistant',
+          text: `Error: ${this._error}`,
+          timestamp: Date.now()
+        }
       ];
     }
     } catch (error) {
@@ -2117,30 +2563,28 @@ class AiAgentHaPanel extends LitElement {
   }
   
   /**
-   * Format action details for display in chat
+   * Format action details for display in chat with action cards
    * @param {Array} actionDetails - Array of action detail objects
    * @returns {Array} Array of message objects for display
    */
   _formatActionDetails(actionDetails) {
     const messages = [];
     
-    // Add a header message
+    // Add a header message with action count
     const actionTypes = new Set(actionDetails.map(a => `${a.domain}.${a.service}`));
-    let actionSummary = 'I performed the following actions:';
+    let actionSummary = '';
     
     if (actionDetails.length === 1) {
       const action = actionDetails[0];
-      const serviceName = action.service.replace('_', ' ');
       const targetEntities = Array.isArray(action.target?.entity_id)
         ? action.target.entity_id.join(', ')
         : action.target?.entity_id || 'N/A';
       
-      actionSummary = `✅ **Performed:** ${action.domain}.${action.service}\n`;
-      actionSummary += `📍 **Target:** ${targetEntities}`;
+      actionSummary = `I performed the following action:\n\n`;
+      actionSummary += `**${action.domain}.${action.service}** → ${targetEntities}`;
     } else {
-      actionSummary = `\n✅ **Performed ${actionDetails.length} actions:**\n\n`;
+      actionSummary = `I performed ${actionDetails.length} actions:\n\n`;
       actionDetails.forEach((action, index) => {
-        const serviceName = action.service.replace('_', ' ');
         const targetEntities = Array.isArray(action.target?.entity_id)
           ? action.target.entity_id.join(', ')
           : action.target?.entity_id || 'N/A';
@@ -2149,10 +2593,21 @@ class AiAgentHaPanel extends LitElement {
       });
     }
     
+    // Add action summary message
     messages.push({
       type: 'assistant',
       text: actionSummary,
       isActionReport: true
+    });
+    
+    // Add individual action cards (UX Enhancement)
+    actionDetails.forEach((action, index) => {
+      messages.push({
+        type: 'actionCard',
+        action: action,
+        index: index,
+        total: actionDetails.length
+      });
     });
     
     return messages;
@@ -2284,10 +2739,14 @@ class AiAgentHaPanel extends LitElement {
   }
   
   /**
-   * Save the current conversation to the backend
+   * Save the current conversation to the backend with UX status
    */
   async _saveCurrentConversation() {
     if (!this.hass || this._messages.length === 0) return;
+    
+    // Set saving status (UX Enhancement)
+    this._saveStatus = 'saving';
+    this.requestUpdate();
     
     try {
       const conversationId = this._currentConversationId || crypto.randomUUID();
@@ -2321,18 +2780,38 @@ class AiAgentHaPanel extends LitElement {
         if (!this._currentConversationId) {
           this._currentConversationId = conversationId;
         }
+        this._saveStatus = 'saved';
         await this._loadConversations();
+        this.requestUpdate();
+        
+        // Clear saved status after 2 seconds
+        setTimeout(() => {
+          this._saveStatus = null;
+          this.requestUpdate();
+        }, 2000);
       }
     } catch (error) {
       console.error('Error saving conversation:', error);
+      this._saveStatus = 'error';
+      this.requestUpdate();
+      
+      // Clear error status after 3 seconds
+      setTimeout(() => {
+        this._saveStatus = null;
+        this.requestUpdate();
+      }, 3000);
     }
   }
   
   /**
-   * Load a specific conversation
+   * Load a specific conversation with UX status indicators
    */
   async _loadConversation(conversationId) {
     if (!this.hass) return;
+    
+    // Set loading status (UX Enhancement)
+    this._loadStatus = 'loading';
+    this.requestUpdate();
     
     try {
       const result = await this.hass.callWS({
@@ -2343,11 +2822,20 @@ class AiAgentHaPanel extends LitElement {
       if (result && result.messages) {
         this._messages = result.messages;
         this._currentConversationId = conversationId;
+        this._loadStatus = 'loaded';
         await this._loadConversations();
         this.requestUpdate();
+        
+        // Clear loaded status after 2 seconds
+        setTimeout(() => {
+          this._loadStatus = null;
+          this.requestUpdate();
+        }, 2000);
       }
     } catch (error) {
       console.error('Error loading conversation:', error);
+      this._loadStatus = 'error';
+      this.requestUpdate();
     }
   }
   
@@ -2550,12 +3038,283 @@ class AiAgentHaPanel extends LitElement {
     this.requestUpdate();
   }
   
+  // ========== UX Enhancement Methods ==========
+  
+  /**
+   * Format response time in a human-readable format
+   * @param {number} milliseconds - Response time in milliseconds
+   * @returns {string} Formatted response time string
+   */
+  _formatResponseTime(milliseconds) {
+    if (!milliseconds || milliseconds < 0) return '';
+    if (milliseconds < 1000) return `${milliseconds}ms`;
+    return `${(milliseconds / 1000).toFixed(1)}s`;
+  }
+  
+  /**
+   * Format relative time (e.g., "2 minutes ago")
+   * @param {number} timestamp - Unix timestamp in milliseconds
+   * @returns {string} Relative time string
+   */
+  _formatRelativeTime(timestamp) {
+    if (!timestamp) return '';
+    const date = new Date(timestamp);
+    const now = new Date();
+    const diffMs = now - date;
+    const diffSec = Math.floor(diffMs / 1000);
+    const diffMin = Math.floor(diffSec / 60);
+    const diffHour = Math.floor(diffMin / 60);
+    const diffDay = Math.floor(diffHour / 24);
+    
+    if (diffSec < 60) return 'just now';
+    if (diffMin < 60) return `${diffMin} minute${diffMin !== 1 ? 's' : ''} ago`;
+    if (diffHour < 24) return `${diffHour} hour${diffHour !== 1 ? 's' : ''} ago`;
+    if (diffDay < 7) return `${diffDay} day${diffDay !== 1 ? 's' : ''} ago`;
+    return date.toLocaleDateString();
+  }
+  
+  /**
+   * Show typing indicator when AI is processing
+   */
+  _showTyping() {
+    this._showTypingIndicator = true;
+    this.requestUpdate();
+  }
+  
+  /**
+   * Hide typing indicator when AI response is received
+   */
+  _hideTyping() {
+    this._showTypingIndicator = false;
+    this.requestUpdate();
+  }
+  
+  /**
+   * Show user-friendly error message with auto-dismiss
+   * @param {string} message - Main error message
+   * @param {string} details - Optional error details
+   */
+  _showError(message, details = '') {
+    this._errorMessage = message;
+    this._errorDetails = details;
+    this.requestUpdate();
+    
+    // Auto-dismiss after 5 seconds
+    setTimeout(() => {
+      this._errorMessage = null;
+      this._errorDetails = null;
+      this.requestUpdate();
+    }, 5000);
+  }
+  
+  /**
+   * Hide error message
+   */
+  _hideError() {
+    this._errorMessage = null;
+    this._errorDetails = null;
+    this.requestUpdate();
+  }
+  
+  /**
+   * Render error banner with retry option
+   */
+  _renderErrorBanner() {
+    if (!this._errorMessage) return '';
+    
+    return html`
+      <div class="error-banner">
+        <ha-icon icon="mdi:alert-circle" style="color: #f44336; --mdc-icon-size: 20px;"></ha-icon>
+        <div class="error-content">
+          <div class="error-message">${this._errorMessage}</div>
+          ${this._errorDetails ? html`<div class="error-details">${this._errorDetails}</div>` : ''}
+        </div>
+        <button class="retry-button" @click=${this._retryLastAction}>Retry</button>
+      </div>
+    `;
+  }
+  
+  /**
+   * Render typing indicator with animated dots
+   */
+  _renderTypingIndicator() {
+    if (!this._showTypingIndicator) return '';
+    
+    return html`
+      <div class="typing-indicator">
+        <span>.</span>
+        <span>.</span>
+        <span>.</span>
+      </div>
+    `;
+  }
+  
+  /**
+   * Render action card with status
+   * @param {Object} action - Action object with domain, service, target, result
+   * @returns {Template} Rendered action card
+   */
+  _renderActionCard(action, index, total) {
+    const domain = action.domain || 'unknown';
+    const service = action.service || 'unknown';
+    const target = action.target || {};
+    const result = action.result || {};
+    
+    const isSuccess = result?.success !== false;
+    const hasError = result?.error !== undefined;
+    const statusIcon = hasError ? '❌' : (isSuccess ? '✅' : '⏳');
+    const cardClass = hasError ? 'error' : (isSuccess ? 'success' : 'in-progress');
+    
+    return html`
+      <div class="action-card ${cardClass}">
+        <div class="action-header">
+          <span class="action-badge">${domain}/${service}</span>
+          <span class="action-status">${statusIcon}</span>
+        </div>
+        ${target?.entity_id ? html`
+          <div class="action-target">
+            <ha-icon icon="mdi:cursor-pointer"></ha-icon>
+            ${Array.isArray(target.entity_id) ? target.entity_id.join(', ') : target.entity_id}
+          </div>
+        ` : ''}
+        ${target?.area_id ? html`
+          <div class="action-target">
+            <ha-icon icon="mdi:map-marker"></ha-icon>
+            Area: ${target.area_id}
+          </div>
+        ` : ''}
+        ${hasError ? html`
+          <div class="action-error">${result.error || 'Unknown error'}</div>
+        ` : ''}
+      </div>
+    `;
+  }
+  
+  /**
+   * Render action progress during execution
+   * @param {Array} actions - Array of actions being executed
+   * @param {number} currentIndex - Current action index
+   */
+  _renderActionProgress(actions, currentIndex = -1) {
+    if (!actions || actions.length === 0) return '';
+    
+    const currentAction = currentIndex >= 0 ? actions[currentIndex] : null;
+    const progress = ((currentIndex) / actions.length) * 100;
+    
+    return html`
+      <div class="action-progress">
+        <div class="action-progress-header">
+          <div class="action-progress-spinner"></div>
+          <span>${currentAction ?
+            `Executing action ${currentIndex + 1} of ${actions.length}: ${currentAction.domain}/${currentAction.service}` :
+            `Executing ${actions.length} actions...`
+          }</span>
+        </div>
+        <div class="action-progress-bar">
+          <div class="action-progress-fill" style="width: ${progress}%"></div>
+        </div>
+      </div>
+    `;
+  }
+  
+  /**
+   * Render message status indicator
+   * @param {string} status - Message status: 'pending', 'success', 'error'
+   */
+  _renderMessageStatus(status) {
+    if (!status || status === 'success') return '';
+    
+    if (status === 'pending') {
+      return html`
+        <div class="message-status pending">
+          <div class="status-spinner"></div>
+          <span>Sending...</span>
+        </div>
+      `;
+    }
+    
+    if (status === 'error') {
+      return html`
+        <div class="message-status error">
+          <ha-icon icon="mdi:alert-circle"></ha-icon>
+          <span>Failed to send</span>
+        </div>
+      `;
+    }
+    
+    return '';
+  }
+  
+  /**
+   * Render save/load status indicator
+   */
+  _renderConversationStatus() {
+    if (this._saveStatus === 'saving') {
+      return html`
+        <div class="status-indicator saving">
+          <div class="status-spinner"></div>
+          <span>Saving...</span>
+        </div>
+      `;
+    }
+    
+    if (this._saveStatus === 'saved') {
+      return html`
+        <div class="status-indicator saved">
+          <ha-icon icon="mdi:check-circle"></ha-icon>
+          <span>Saved</span>
+        </div>
+      `;
+    }
+    
+    if (this._loadStatus === 'loading') {
+      return html`
+        <div class="status-indicator loading">
+          <div class="status-spinner"></div>
+          <span>Loading...</span>
+        </div>
+      `;
+    }
+    
+    return '';
+  }
+  
+  /**
+   * Render skeleton loading screens
+   */
+  _renderSkeletonLoading() {
+    return html`
+      <div class="skeleton skeleton-message"></div>
+      <div class="skeleton skeleton-message"></div>
+      <div class="skeleton skeleton-message"></div>
+    `;
+  }
+  
+  /**
+   * Retry the last action (send message again)
+   */
+  async _retryLastAction() {
+    this._hideError();
+    
+    // Find the last user message
+    const lastUserMessage = [...this._messages].reverse().find(m => m.type === 'user');
+    if (lastUserMessage) {
+      // Clear error and retry
+      this._error = null;
+      await this._sendMessage();
+    }
+  }
+  
   _clearChat() {
     this._messages = [];
     this._clearLoadingState();
     this._error = null;
     this._pendingAutomation = null;
     this._debugInfo = null;
+    this._errorMessage = null;
+    this._errorDetails = null;
+    this._saveStatus = null;
+    this._loadStatus = null;
     // Don't clear prompt history - users might want to keep it
   }
 

@@ -84,6 +84,7 @@ from .integration_guide import IntegrationGuideProvider
 from .prompt_compactor import PromptCompactor, ConversationSummary
 from .chat_history import ChatHistoryManager
 from .multimedia import MultimediaProcessor, ImageAttachment
+from .input_validator import InputValidator, get_input_validator
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -3406,8 +3407,33 @@ Then restart Home Assistant to see your new dashboard in the sidebar."""
             image_mime_types: Optional list of MIME types for the images
         """
         try:
-            if not user_query or not isinstance(user_query, str):
-                return {"success": False, "error": "Invalid query format"}
+            # === Input Validation ===
+            input_validator = get_input_validator()
+            validation_result = input_validator.validate_query(user_query, images)
+
+            if not validation_result.is_valid:
+                _LOGGER.warning("Input validation failed: %s", validation_result.errors)
+                return {
+                    "success": False,
+                    "error": "Invalid input",
+                    "validation_errors": validation_result.errors,
+                }
+
+            user_query = validation_result.sanitized_input
+
+            if validation_result.warnings:
+                _LOGGER.warning("Input validation warnings: %s", validation_result.warnings)
+                # Include warnings in debug output
+                if debug:
+                    return {
+                        "success": True,
+                        "warning": "Input validation warnings",
+                        "validation_warnings": validation_result.warnings,
+                        "sanitized_length": len(user_query),
+                    }
+
+            if validation_result.truncated:
+                _LOGGER.warning("User query was truncated")
 
             # Get the correct configuration for the requested provider
             if provider and provider in self.hass.data[DOMAIN]["configs"]:

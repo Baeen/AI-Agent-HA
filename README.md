@@ -32,6 +32,42 @@ Another way to support me will be to try my new project. Askie - AI for kids. I 
 - 🎨 **Beautiful UI**: Clean, modern chat interface
 - 🔄 **Real-time**: Instant responses and updates
 
+## 🆕 Latest Enhancements (v0.2.0)
+
+### Response Validation
+- AI responses are validated before processing
+- Automatic JSON issue detection and repair
+- Service call structure validation
+
+### Error Recovery
+- Circuit breaker pattern for AI providers
+- Exponential backoff with jitter for retries
+- Automatic health status reporting
+
+### Action Execution Framework
+- Simulated action execution (dry run) before actual execution
+- Batch action execution with configurable error handling
+- Automatic rollback on failure
+- Action progress tracking
+
+### Performance Optimizations
+- In-memory cache with TTL support
+- Specialized caching for Home Assistant data types
+- Parallel execution with concurrency limiting
+- Entity batch fetching
+- Performance monitoring and metrics
+
+### UX Enhancements
+- Typing indicator with animated "..." effect
+- Action progress feedback with progress bars
+- Response time display for each message
+- Improved error messages with retry options
+- Conversation status indicators (saving, saved, loading)
+- Action detail cards with status icons
+- Keyboard shortcuts (Ctrl+Enter to send, Escape to close)
+- Skeleton loading screens
+- Message status indicators (pending, success, error)
+
 ## 📸 Screenshots
 
 ### Automation Creation

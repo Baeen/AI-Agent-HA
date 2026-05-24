@@ -91,3 +91,41 @@ DEFAULT_IMAGE_COMPRESSION_QUALITY = 80
 # Supported image types
 SUPPORTED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"]
 SUPPORTED_IMAGE_EXTENSIONS = [".jpg", ".jpeg", ".png", ".webp", ".gif"]
+
+# Input Validation settings
+CONF_MAX_QUERY_LENGTH = "max_query_length"
+CONF_ENABLE_INJECTION_DETECTION = "enable_injection_detection"
+
+DEFAULT_MAX_QUERY_LENGTH = 4096
+DEFAULT_ENABLE_INJECTION_DETECTION = True
+
+# Response Validation settings
+CONF_RESPONSE_VALIDATION_ENABLED = "response_validation_enabled"
+CONF_RESPONSE_VALIDATION_STRICT_MODE = "response_validation_strict_mode"
+
+DEFAULT_RESPONSE_VALIDATION_ENABLED = True
+DEFAULT_RESPONSE_VALIDATION_STRICT_MODE = False
+
+# Error Recovery settings
+CONF_MAX_RETRIES = "max_retries"
+CONF_RETRY_DELAY = "retry_delay"
+CONF_CIRCUIT_FAILURE_THRESHOLD = "circuit_failure_threshold"
+CONF_CIRCUIT_TIMEOUT = "circuit_timeout"
+CONF_FAILOVER_ENABLED = "failover_enabled"
+CONF_FAILOVER_PROVIDERS = "failover_providers"
+CONF_FALLBACK_RESPONSE = "fallback_response"
+
+DEFAULT_MAX_RETRIES = 3
+DEFAULT_RETRY_DELAY = 1.0
+DEFAULT_CIRCUIT_FAILURE_THRESHOLD = 5
+DEFAULT_CIRCUIT_TIMEOUT = 60.0
+DEFAULT_FAILOVER_ENABLED = True
+
+# Action Execution settings
+CONF_ACTION_REQUIRE_CONFIRMATION = "action_require_confirmation"
+CONF_ACTION_ENABLE_SIMULATION = "action_enable_simulation"
+CONF_ACTION_ENABLE_ROLLBACK = "action_enable_rollback"
+
+DEFAULT_ACTION_REQUIRE_CONFIRMATION = True
+DEFAULT_ACTION_ENABLE_SIMULATION = True
+DEFAULT_ACTION_ENABLE_ROLLBACK = True
