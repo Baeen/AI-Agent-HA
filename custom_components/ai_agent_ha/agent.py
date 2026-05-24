@@ -1742,6 +1742,7 @@ class AiAgentHaAgent:
             domain = call["domain"]
             service = call["service"]
             target = call["target"]
+            service_data = call.get("service_data", {})
             
             # Generate human-readable description
             if domain == "homeassistant" and service == "rename_entity":
@@ -1750,6 +1751,26 @@ class AiAgentHaAgent:
                     responses.append(f"I renamed the device to '{new_entity_id}'.")
                 else:
                     responses.append("I renamed the device.")
+            elif domain == "renamed_entity" and service == "rename":
+                # Handle renamed_entity.rename service (Home Assistant entity renaming)
+                new_object_id = service_data.get("new_object_id", "") if isinstance(service_data, dict) else ""
+                original_entity = target.get("entity_id", "") if isinstance(target, dict) else ""
+                if new_object_id and original_entity:
+                    responses.append(f"I renamed {original_entity} to '{new_object_id}'.")
+                elif new_object_id:
+                    responses.append(f"I renamed the entity to '{new_object_id}'.")
+                else:
+                    responses.append("I renamed the entity.")
+            elif domain == "homeassistant" and service == "call_service":
+                # Handle create_binary_sensor or other created entities
+                if isinstance(target, dict):
+                    target_entity = target.get("entity_id", "")
+                    if target_entity:
+                        responses.append(f"I called {target_entity}.")
+                    else:
+                        responses.append("I executed the service call.")
+                else:
+                    responses.append("I executed the service call.")
             elif domain == "homeassistant" and service == "turn_on":
                 if isinstance(target, dict) and "entity_id" in target:
                     responses.append(f"I turned on {target['entity_id']}.")
@@ -1760,10 +1781,18 @@ class AiAgentHaAgent:
                     responses.append(f"I turned off {target['entity_id']}.")
                 else:
                     responses.append("I turned off the device.")
-            elif domain == "homeassistant" and service == "call_service":
-                responses.append("I executed the requested service call.")
             else:
-                responses.append(f"I executed {domain}.{service}.")
+                # Generic response for other service types
+                service_name = service.replace("_", " ")
+                if isinstance(target, dict) and target.get("entity_id"):
+                    entities = target.get("entity_id", [])
+                    if isinstance(entities, list):
+                        entities_str = ", ".join(entities)
+                    else:
+                        entities_str = entities
+                    responses.append(f"I {service_name} for {entities_str}.")
+                else:
+                    responses.append(f"I executed {domain}.{service}.")
         
         if len(responses) == 1:
             return responses[0]
@@ -4329,14 +4358,73 @@ Then restart Home Assistant to see your new dashboard in the sidebar."""
                         }
                     )
 
-            # If we've reached max iterations without a final response
-            _LOGGER.warning("Reached maximum iterations without final response")
+            # If we've reached max iterations without a final response, use fallback
+            _LOGGER.warning("Reached maximum iterations without final response, using fallback")
+            fallback_message = self._generate_fallback_response()
             result = {
-                "success": False,
-                "error": "Maximum iterations reached without final response",
+                "success": True,
+                "answer": fallback_message,
+                "action_details": action_details if action_details else None,
             }
             result = _with_debug(result)
             self._set_cached_data(cache_key, result)
+            
+            # Auto-save conversation to chat history
+            try:
+                import uuid
+                
+                # Get chat history manager from hass.data
+                chat_manager = self.hass.data.get(DOMAIN, {}).get("chat_history_manager")
+                if chat_manager:
+                    # Generate or use existing conversation ID
+                    if not hasattr(self, '_current_conversation_id'):
+                        self._current_conversation_id = f"conv_{uuid.uuid4().hex[:12]}"
+                    
+                    # Build messages list for storage (simplified version)
+                    messages_to_save = []
+                    for msg in self.conversation_history:
+                        content = msg.get("content", "")
+                        role = msg.get("role", "unknown")
+                        if role == "system":
+                            continue
+                        elif role == "user":
+                            msg_type = "user"
+                        elif role == "assistant":
+                            msg_type = "assistant"
+                        else:
+                            msg_type = "unknown"
+                        
+                        text = content
+                        if content.startswith("{"):
+                            try:
+                                parsed = json.loads(content)
+                                if isinstance(parsed, dict) and "response" in parsed:
+                                    text = parsed["response"]
+                                elif isinstance(parsed, dict) and "answer" in parsed:
+                                    text = parsed["answer"]
+                            except (json.JSONDecodeError, ValueError):
+                                pass
+                        
+                        messages_to_save.append({
+                            "type": msg_type,
+                            "text": text,
+                        })
+                    
+                    auto_name = "Conversation"
+                    for msg in self.conversation_history:
+                        if msg.get("role") == "user":
+                            preview = msg.get("content", "")[:50]
+                            auto_name = f'"{preview}{"..." if len(preview) >= 50 else ""}"'
+                            break
+                    
+                    await chat_manager.save_conversation(
+                        self._current_conversation_id,
+                        messages_to_save,
+                        auto_name,
+                    )
+            except Exception as e:
+                _LOGGER.debug("Failed to auto-save conversation: %s", str(e))
+            
             return result
             
         except Exception as e:
