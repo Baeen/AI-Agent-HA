@@ -2000,9 +2000,10 @@ class AiAgentHaPanel extends LitElement {
   _toggleHistorySidebar() {
     this._showHistorySidebar = !this._showHistorySidebar;
     if (this._showHistorySidebar) {
+      // LitElement automatically re-renders when reactive properties change
+      // No need for explicit requestUpdate() - it can cause timing issues
       this._loadConversations();
     }
-    this.requestUpdate();
   }
 
   _scrollToBottom() {
