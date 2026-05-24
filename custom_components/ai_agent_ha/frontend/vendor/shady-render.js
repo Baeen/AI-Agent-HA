@@ -27,7 +27,7 @@ import { parts, render as litRender } from './render.js';
 import { templateCaches } from './template-factory.js';
 import { TemplateInstance } from './template-instance.js';
 import { marker, Template } from './template.js';
-export { html, svg, TemplateResult } from '../lit-html.js';
+export { html, svg, TemplateResult } from './lit-html.js';
 // Get a key to lookup in `templateCaches`.
 const getTemplateCacheKey = (type, scopeName) => `${type}--${scopeName}`;
 let compatibleShadyCSSVersion = true;

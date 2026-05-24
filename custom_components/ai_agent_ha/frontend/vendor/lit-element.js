@@ -53,13 +53,13 @@
  *
  * @packageDocumentation
  */
-import { render } from './lib/shady-render.js';
-import { UpdatingElement } from './lib/updating-element.js';
-export * from './lib/updating-element.js';
-export * from './lib/decorators.js';
+import { render } from './shady-render.js';
+import { UpdatingElement } from './updating-element.js';
+export * from './updating-element.js';
+export * from './decorators.js';
 export { html, svg, TemplateResult, SVGTemplateResult } from './lit-html.js';
-import { supportsAdoptingStyleSheets, unsafeCSS } from './lib/css-tag.js';
-export * from './lib/css-tag.js';
+import { supportsAdoptingStyleSheets, unsafeCSS } from './css-tag.js';
+export * from './css-tag.js';
 // IMPORTANT: do not change the property name or the assignment expression.
 // This line will be used in regexes to search for LitElement usage.
 // TODO(justinfagnani): inject version number at build time

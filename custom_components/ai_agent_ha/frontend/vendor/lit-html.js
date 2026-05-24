@@ -27,19 +27,19 @@
  * Do not remove this comment; it keeps typedoc from misplacing the module
  * docs.
  */
-import { defaultTemplateProcessor } from './lib/default-template-processor.js';
-import { SVGTemplateResult, TemplateResult } from './lib/template-result.js';
-export { DefaultTemplateProcessor, defaultTemplateProcessor } from './lib/default-template-processor.js';
-export { directive, isDirective } from './lib/directive.js';
+import { defaultTemplateProcessor } from './default-template-processor.js';
+import { SVGTemplateResult, TemplateResult } from './template-result.js';
+export { DefaultTemplateProcessor, defaultTemplateProcessor } from './default-template-processor.js';
+export { directive, isDirective } from './directive.js';
 // TODO(justinfagnani): remove line when we get NodePart moving methods
-export { removeNodes, reparentNodes } from './lib/dom.js';
-export { noChange, nothing } from './lib/part.js';
-export { AttributeCommitter, AttributePart, BooleanAttributePart, EventPart, isIterable, isPrimitive, NodePart, PropertyCommitter, PropertyPart } from './lib/parts.js';
-export { parts, render } from './lib/render.js';
-export { templateCaches, templateFactory } from './lib/template-factory.js';
-export { TemplateInstance } from './lib/template-instance.js';
-export { SVGTemplateResult, TemplateResult } from './lib/template-result.js';
-export { createMarker, isTemplatePartActive, Template } from './lib/template.js';
+export { removeNodes, reparentNodes } from './dom.js';
+export { noChange, nothing } from './part.js';
+export { AttributeCommitter, AttributePart, BooleanAttributePart, EventPart, isIterable, isPrimitive, NodePart, PropertyCommitter, PropertyPart } from './parts.js';
+export { parts, render } from './render.js';
+export { templateCaches, templateFactory } from './template-factory.js';
+export { TemplateInstance } from './template-instance.js';
+export { SVGTemplateResult, TemplateResult } from './template-result.js';
+export { createMarker, isTemplatePartActive, Template } from './template.js';
 // IMPORTANT: do not change the property name or the assignment expression.
 // This line will be used in regexes to search for lit-html usage.
 // TODO(justinfagnani): inject version number at build time
