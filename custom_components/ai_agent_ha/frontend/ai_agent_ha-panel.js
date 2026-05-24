@@ -2264,14 +2264,22 @@ class AiAgentHaPanel extends LitElement {
     if (!this.hass) return;
     
     try {
-      const result = await this.hass.callService('ai_agent_ha', 'get_conversations', {});
+      // Use WebSocket command to get conversations directly
+      const result = await this.hass.callWS({
+        type: 'ai_agent_ha/get_conversations'
+      });
       if (result && result.conversations) {
         this._conversations = result.conversations;
       } else if (result && Array.isArray(result)) {
         this._conversations = result;
+      } else if (result && result.success) {
+        // Service call format
+        this._conversations = result.conversations || [];
       }
+      console.debug('Loaded conversations:', this._conversations);
     } catch (error) {
       console.error('Error loading conversations:', error);
+      this._conversations = [];
     }
   }
   
@@ -2302,7 +2310,8 @@ class AiAgentHaPanel extends LitElement {
       }
       if (!name) name = 'New Conversation';
       
-      const result = await this.hass.callService('ai_agent_ha', 'save_conversation', {
+      const result = await this.hass.callWS({
+        type: 'ai_agent_ha/save_conversation',
         conversation_id: conversationId,
         name: name,
         messages: messages
@@ -2326,7 +2335,8 @@ class AiAgentHaPanel extends LitElement {
     if (!this.hass) return;
     
     try {
-      const result = await this.hass.callService('ai_agent_ha', 'get_conversation', {
+      const result = await this.hass.callWS({
+        type: 'ai_agent_ha/get_conversation',
         conversation_id: conversationId
       });
       
@@ -2362,7 +2372,8 @@ class AiAgentHaPanel extends LitElement {
     if (!confirm('Are you sure you want to delete this conversation?')) return;
     
     try {
-      const result = await this.hass.callService('ai_agent_ha', 'delete_conversation', {
+      const result = await this.hass.callWS({
+        type: 'ai_agent_ha/delete_conversation',
         conversation_id: conversationId
       });
       
@@ -2384,7 +2395,8 @@ class AiAgentHaPanel extends LitElement {
     if (!this.hass || !newName || !newName.trim()) return;
     
     try {
-      const result = await this.hass.callService('ai_agent_ha', 'rename_conversation', {
+      const result = await this.hass.callWS({
+        type: 'ai_agent_ha/rename_conversation',
         conversation_id: conversationId,
         name: newName.trim()
       });
@@ -2404,12 +2416,13 @@ class AiAgentHaPanel extends LitElement {
     if (!this.hass) return;
     
     try {
-      const result = await this.hass.callService('ai_agent_ha', 'export_conversation', {
+      const result = await this.hass.callWS({
+        type: 'ai_agent_ha/export_conversation',
         conversation_id: conversationId
       });
       
-      if (result) {
-        const blob = new Blob([JSON.stringify(result, null, 2)], { type: 'application/json' });
+      if (result && result.success && result.data) {
+        const blob = new Blob([JSON.stringify(result.data, null, 2)], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
@@ -2431,7 +2444,8 @@ class AiAgentHaPanel extends LitElement {
     if (!this.hass) return;
     
     try {
-      const result = await this.hass.callService('ai_agent_ha', 'pin_conversation', {
+      const result = await this.hass.callWS({
+        type: 'ai_agent_ha/pin_conversation',
         conversation_id: conversationId
       });
       
@@ -2450,7 +2464,8 @@ class AiAgentHaPanel extends LitElement {
     if (!this.hass || !tag) return;
     
     try {
-      const result = await this.hass.callService('ai_agent_ha', 'add_tag', {
+      const result = await this.hass.callWS({
+        type: 'ai_agent_ha/add_tag',
         conversation_id: conversationId,
         tag: tag.trim()
       });

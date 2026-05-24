@@ -2061,6 +2061,333 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         DOMAIN, "add_tag", async_handle_add_tag, schema=ADD_TAG_SCHEMA
     )
 
+    # WebSocket command handlers for chat history
+    async def async_handle_ws_get_conversations(message):
+        """WebSocket handler to get all conversations."""
+        try:
+            manager = hass.data[DOMAIN].get("chat_history_manager")
+            if not manager:
+                hass.async_add_job(
+                    message.client.send_error("HOME_ASSISTANT_ERROR", "Chat history manager not initialized")
+                )
+                return
+            
+            conversations = await manager.load_conversations()
+            hass.async_add_job(
+                message.client.send_result(
+                    message.id,
+                    {
+                        "success": True,
+                        "conversations": [
+                            {
+                                "conversation_id": c.conversation_id,
+                                "name": c.name,
+                                "created_at": c.created_at,
+                                "updated_at": c.updated_at,
+                                "message_count": c.message_count,
+                                "preview": c.preview,
+                                "tags": c.tags,
+                                "is_pinned": c.is_pinned,
+                            }
+                            for c in conversations
+                        ],
+                    }
+                )
+            )
+        except Exception as e:
+            _LOGGER.error("Error getting conversations via WebSocket: %s", str(e))
+            hass.async_add_job(
+                message.client.send_error("HOME_ASSISTANT_ERROR", str(e))
+            )
+
+    async def async_handle_ws_get_conversation(message):
+        """WebSocket handler to get a specific conversation."""
+        try:
+            conversation_id = message.data.get("conversation_id")
+            if not conversation_id:
+                hass.async_add_job(
+                    message.client.send_error("INVALID_INPUT", "conversation_id is required")
+                )
+                return
+            
+            manager = hass.data[DOMAIN].get("chat_history_manager")
+            if not manager:
+                hass.async_add_job(
+                    message.client.send_error("HOME_ASSISTANT_ERROR", "Chat history manager not initialized")
+                )
+                return
+            
+            messages = await manager.get_conversation(conversation_id)
+            if messages is None:
+                hass.async_add_job(
+                    message.client.send_error("NOT_FOUND", "Conversation not found")
+                )
+                return
+            
+            hass.async_add_job(
+                message.client.send_result(
+                    message.id,
+                    {"success": True, "messages": messages}
+                )
+            )
+        except Exception as e:
+            _LOGGER.error("Error getting conversation via WebSocket: %s", str(e))
+            hass.async_add_job(
+                message.client.send_error("HOME_ASSISTANT_ERROR", str(e))
+            )
+
+    async def async_handle_ws_save_conversation(message):
+        """WebSocket handler to save a conversation."""
+        try:
+            conversation_id = message.data.get("conversation_id")
+            messages = message.data.get("messages", [])
+            name = message.data.get("name", "")
+            
+            if not conversation_id:
+                hass.async_add_job(
+                    message.client.send_error("INVALID_INPUT", "conversation_id is required")
+                )
+                return
+            
+            manager = hass.data[DOMAIN].get("chat_history_manager")
+            if not manager:
+                hass.async_add_job(
+                    message.client.send_error("HOME_ASSISTANT_ERROR", "Chat history manager not initialized")
+                )
+                return
+            
+            success = await manager.save_conversation(conversation_id, messages, name)
+            
+            hass.async_add_job(
+                message.client.send_result(
+                    message.id,
+                    {"success": success, "conversation_id": conversation_id}
+                )
+            )
+        except Exception as e:
+            _LOGGER.error("Error saving conversation via WebSocket: %s", str(e))
+            hass.async_add_job(
+                message.client.send_error("HOME_ASSISTANT_ERROR", str(e))
+            )
+
+    async def async_handle_ws_delete_conversation(message):
+        """WebSocket handler to delete a conversation."""
+        try:
+            conversation_id = message.data.get("conversation_id")
+            if not conversation_id:
+                hass.async_add_job(
+                    message.client.send_error("INVALID_INPUT", "conversation_id is required")
+                )
+                return
+            
+            manager = hass.data[DOMAIN].get("chat_history_manager")
+            if not manager:
+                hass.async_add_job(
+                    message.client.send_error("HOME_ASSISTANT_ERROR", "Chat history manager not initialized")
+                )
+                return
+            
+            success = await manager.delete_conversation(conversation_id)
+            
+            hass.async_add_job(
+                message.client.send_result(message.id, {"success": success})
+            )
+        except Exception as e:
+            _LOGGER.error("Error deleting conversation via WebSocket: %s", str(e))
+            hass.async_add_job(
+                message.client.send_error("HOME_ASSISTANT_ERROR", str(e))
+            )
+
+    async def async_handle_ws_rename_conversation(message):
+        """WebSocket handler to rename a conversation."""
+        try:
+            conversation_id = message.data.get("conversation_id")
+            name = message.data.get("name")
+            
+            if not conversation_id or not name:
+                hass.async_add_job(
+                    message.client.send_error("INVALID_INPUT", "conversation_id and name are required")
+                )
+                return
+            
+            manager = hass.data[DOMAIN].get("chat_history_manager")
+            if not manager:
+                hass.async_add_job(
+                    message.client.send_error("HOME_ASSISTANT_ERROR", "Chat history manager not initialized")
+                )
+                return
+            
+            success = await manager.rename_conversation(conversation_id, name)
+            
+            hass.async_add_job(
+                message.client.send_result(message.id, {"success": success})
+            )
+        except Exception as e:
+            _LOGGER.error("Error renaming conversation via WebSocket: %s", str(e))
+            hass.async_add_job(
+                message.client.send_error("HOME_ASSISTANT_ERROR", str(e))
+            )
+
+    async def async_handle_ws_export_conversation(message):
+        """WebSocket handler to export a conversation."""
+        try:
+            conversation_id = message.data.get("conversation_id")
+            if not conversation_id:
+                hass.async_add_job(
+                    message.client.send_error("INVALID_INPUT", "conversation_id is required")
+                )
+                return
+            
+            manager = hass.data[DOMAIN].get("chat_history_manager")
+            if not manager:
+                hass.async_add_job(
+                    message.client.send_error("HOME_ASSISTANT_ERROR", "Chat history manager not initialized")
+                )
+                return
+            
+            export_data = await manager.export_conversation(conversation_id)
+            if export_data is None:
+                hass.async_add_job(
+                    message.client.send_error("NOT_FOUND", "Conversation not found")
+                )
+                return
+            
+            hass.async_add_job(
+                message.client.send_result(message.id, {"success": True, "data": export_data})
+            )
+        except Exception as e:
+            _LOGGER.error("Error exporting conversation via WebSocket: %s", str(e))
+            hass.async_add_job(
+                message.client.send_error("HOME_ASSISTANT_ERROR", str(e))
+            )
+
+    async def async_handle_ws_pin_conversation(message):
+        """WebSocket handler to pin a conversation."""
+        try:
+            conversation_id = message.data.get("conversation_id")
+            if not conversation_id:
+                hass.async_add_job(
+                    message.client.send_error("INVALID_INPUT", "conversation_id is required")
+                )
+                return
+            
+            manager = hass.data[DOMAIN].get("chat_history_manager")
+            if not manager:
+                hass.async_add_job(
+                    message.client.send_error("HOME_ASSISTANT_ERROR", "Chat history manager not initialized")
+                )
+                return
+            
+            success = await manager.pin_conversation(conversation_id)
+            
+            hass.async_add_job(
+                message.client.send_result(message.id, {"success": success})
+            )
+        except Exception as e:
+            _LOGGER.error("Error pinning conversation via WebSocket: %s", str(e))
+            hass.async_add_job(
+                message.client.send_error("HOME_ASSISTANT_ERROR", str(e))
+            )
+
+    async def async_handle_ws_add_tag(message):
+        """WebSocket handler to add a tag to a conversation."""
+        try:
+            conversation_id = message.data.get("conversation_id")
+            tag = message.data.get("tag")
+            
+            if not conversation_id or not tag:
+                hass.async_add_job(
+                    message.client.send_error("INVALID_INPUT", "conversation_id and tag are required")
+                )
+                return
+            
+            manager = hass.data[DOMAIN].get("chat_history_manager")
+            if not manager:
+                hass.async_add_job(
+                    message.client.send_error("HOME_ASSISTANT_ERROR", "Chat history manager not initialized")
+                )
+                return
+            
+            success = await manager.add_tag(conversation_id, tag)
+            
+            hass.async_add_job(
+                message.client.send_result(message.id, {"success": success})
+            )
+        except Exception as e:
+            _LOGGER.error("Error adding tag via WebSocket: %s", str(e))
+            hass.async_add_job(
+                message.client.send_error("HOME_ASSISTANT_ERROR", str(e))
+            )
+
+    async def async_handle_ws_search_conversations(message):
+        """WebSocket handler to search conversations."""
+        try:
+            query = message.data.get("query", "")
+            
+            manager = hass.data[DOMAIN].get("chat_history_manager")
+            if not manager:
+                hass.async_add_job(
+                    message.client.send_error("HOME_ASSISTANT_ERROR", "Chat history manager not initialized")
+                )
+                return
+            
+            conversations = await manager.search_conversations(query)
+            hass.async_add_job(
+                message.client.send_result(
+                    message.id,
+                    {
+                        "success": True,
+                        "conversations": [
+                            {
+                                "conversation_id": c.conversation_id,
+                                "name": c.name,
+                                "created_at": c.created_at,
+                                "updated_at": c.updated_at,
+                                "message_count": c.message_count,
+                                "preview": c.preview,
+                                "tags": c.tags,
+                                "is_pinned": c.is_pinned,
+                            }
+                            for c in conversations
+                        ],
+                    }
+                )
+            )
+        except Exception as e:
+            _LOGGER.error("Error searching conversations via WebSocket: %s", str(e))
+            hass.async_add_job(
+                message.client.send_error("HOME_ASSISTANT_ERROR", str(e))
+            )
+
+    # Register WebSocket commands
+    hass.components.websocket_api.async_register_command(
+        "ai_agent_ha/get_conversations", async_handle_ws_get_conversations
+    )
+    hass.components.websocket_api.async_register_command(
+        "ai_agent_ha/get_conversation", async_handle_ws_get_conversation
+    )
+    hass.components.websocket_api.async_register_command(
+        "ai_agent_ha/save_conversation", async_handle_ws_save_conversation
+    )
+    hass.components.websocket_api.async_register_command(
+        "ai_agent_ha/delete_conversation", async_handle_ws_delete_conversation
+    )
+    hass.components.websocket_api.async_register_command(
+        "ai_agent_ha/rename_conversation", async_handle_ws_rename_conversation
+    )
+    hass.components.websocket_api.async_register_command(
+        "ai_agent_ha/export_conversation", async_handle_ws_export_conversation
+    )
+    hass.components.websocket_api.async_register_command(
+        "ai_agent_ha/pin_conversation", async_handle_ws_pin_conversation
+    )
+    hass.components.websocket_api.async_register_command(
+        "ai_agent_ha/add_tag", async_handle_ws_add_tag
+    )
+    hass.components.websocket_api.async_register_command(
+        "ai_agent_ha/search_conversations", async_handle_ws_search_conversations
+    )
+
     # Permission System schemas
     APPROVE_PERMISSION_SCHEMA = vol.Schema({
         vol.Required("request_id"): str,
@@ -2259,6 +2586,18 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.services.async_remove(DOMAIN, "clear_old_conversations")
     hass.services.async_remove(DOMAIN, "pin_conversation")
     hass.services.async_remove(DOMAIN, "add_tag")
+    
+    # Remove Chat History WebSocket commands
+    hass.components.websocket_api.async_unregister_command("ai_agent_ha/get_conversations")
+    hass.components.websocket_api.async_unregister_command("ai_agent_ha/get_conversation")
+    hass.components.websocket_api.async_unregister_command("ai_agent_ha/save_conversation")
+    hass.components.websocket_api.async_unregister_command("ai_agent_ha/delete_conversation")
+    hass.components.websocket_api.async_unregister_command("ai_agent_ha/rename_conversation")
+    hass.components.websocket_api.async_unregister_command("ai_agent_ha/export_conversation")
+    hass.components.websocket_api.async_unregister_command("ai_agent_ha/pin_conversation")
+    hass.components.websocket_api.async_unregister_command("ai_agent_ha/add_tag")
+    hass.components.websocket_api.async_unregister_command("ai_agent_ha/search_conversations")
+    
     hass.services.async_remove(DOMAIN, "approve_permission")
     hass.services.async_remove(DOMAIN, "deny_permission")
     hass.services.async_remove(DOMAIN, "get_pending_permissions")
