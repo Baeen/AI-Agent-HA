@@ -19,7 +19,6 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
 from homeassistant.core import HomeAssistant, ServiceCall
-from homeassistant.setup import async_get_domains_in_state
 
 from .const import DOMAIN
 
@@ -404,9 +403,8 @@ class ActionExecutor:
         """
         warnings = []
 
-        # Check if domain exists
-        domains = async_get_domains_in_state(self.hass)
-        if domain not in domains and domain != "persistent_notification":
+        # Check if domain exists by checking available services
+        if domain != "persistent_notification":
             # Domain might not be loaded yet, but service could still exist
             try:
                 services = list(self.hass.services.async_services())
