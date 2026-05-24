@@ -1409,3 +1409,111 @@ get_tts_voices:
       description: "The TTS engine name."
       example: "google_translate"
 
+# Automation Testing/Simulation Mode (A3)
+test_automation:
+  name: "Test Automation in Simulation Mode"
+  description: "Test an automation configuration in simulation mode without executing dangerous actions."
+  fields:
+    automation:
+      name: Automation
+      description: "The automation configuration to test."
+      required: true
+      example: '{"alias": "Test Automation", "trigger": {"platform": "time", "at": "21:00:00"}, "action": [{"service": "light.turn_on", "target": {"entity_id": "light.living_room"}}]}'
+    dry_run:
+      name: Dry Run
+      description: "If true, only simulate without any execution."
+      required: false
+      default: true
+      example: true
+      selector:
+        boolean: {}
+    safety_checks:
+      name: Safety Checks
+      description: "If true, run enhanced safety checks for dangerous automations."
+      required: false
+      default: true
+      example: true
+      selector:
+        boolean: {}
+    provider:
+      name: AI Provider
+      description: "The AI provider to use for analysis."
+      required: false
+      default: "openai"
+      example: "openai"
+      selector:
+        select:
+          options:
+            - "openai"
+            - "llama"
+            - "gemini"
+            - "openrouter"
+            - "anthropic"
+            - "alter"
+            - "zai"
+            - "local"
+
+simulate_action:
+  name: "Simulate Single Action"
+  description: "Simulate a single service call action and return warnings/recommendations."
+  fields:
+    domain:
+      name: Domain
+      description: "The service domain (e.g., 'light', 'switch', 'media_player')."
+      required: true
+      example: "light"
+    service:
+      name: Service
+      description: "The service name (e.g., 'turn_on', 'turn_off')."
+      required: true
+      example: "turn_on"
+    target:
+      name: Target
+      description: "The target entities (JSON object)."
+      required: false
+      example: '{"entity_id": "light.living_room"}'
+      selector:
+        object: {}
+    service_data:
+      name: Service Data
+      description: "The service data (JSON object)."
+      required: false
+      example: '{"brightness": 200}'
+      selector:
+        object: {}
+
+test_automation_from_nl:
+  name: "Test Automation from Natural Language"
+  description: "Convert natural language to automation and test in simulation mode."
+  fields:
+    natural_language:
+      name: Natural Language
+      description: "The natural language description of the automation."
+      required: true
+      example: "Turn on the living room lights at 9 PM every day"
+    safety_checks:
+      name: Safety Checks
+      description: "If true, run enhanced safety checks for dangerous automations."
+      required: false
+      default: true
+      example: true
+      selector:
+        boolean: {}
+    provider:
+      name: AI Provider
+      description: "The AI provider to use for conversion."
+      required: false
+      default: "openai"
+      example: "openai"
+      selector:
+        select:
+          options:
+            - "openai"
+            - "llama"
+            - "gemini"
+            - "openrouter"
+            - "anthropic"
+            - "alter"
+            - "zai"
+            - "local"
+

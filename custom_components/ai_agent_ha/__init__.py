@@ -428,6 +428,33 @@ GET_TTS_VOICES_SCHEMA = vol.Schema(
     }
 )
 
+# Automation Testing/Simulation Mode (A3) service schemas
+TEST_AUTOMATION_SCHEMA = vol.Schema(
+    {
+        vol.Required("automation"): dict,
+        vol.Optional("dry_run", default=True): cv.boolean,
+        vol.Optional("safety_checks", default=True): cv.boolean,
+        vol.Optional("provider"): cv.string,
+    }
+)
+
+SIMULATE_ACTION_SCHEMA = vol.Schema(
+    {
+        vol.Required("domain"): cv.string,
+        vol.Required("service"): cv.string,
+        vol.Optional("target", default={}): dict,
+        vol.Optional("service_data", default={}): dict,
+    }
+)
+
+TEST_AUTOMATION_FROM_NL_SCHEMA = vol.Schema(
+    {
+        vol.Required("natural_language"): cv.string,
+        vol.Optional("safety_checks", default=True): cv.boolean,
+        vol.Optional("provider"): cv.string,
+    }
+)
+
 
 async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Migrate old config entries to new version."""
@@ -2782,6 +2809,113 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             _LOGGER.error("Error clearing old audit logs: %s", str(e))
             return {"success": False, "error": str(e)}
 
+    # Automation Testing/Simulation Mode (A3) service handlers
+    async def async_handle_test_automation(call):
+        """Handle the test_automation service call."""
+        try:
+            agent = hass.data[DOMAIN].get("agents")
+            if agent is None:
+                _LOGGER.error("AI Agent not initialized")
+                return {
+                    "success": False,
+                    "error": "AI Agent not initialized",
+                }
+
+            automation = call.data.get("automation")
+            if not automation:
+                return {
+                    "success": False,
+                    "error": "Automation configuration is required",
+                }
+
+            dry_run = call.data.get("dry_run", True)
+            safety_checks = call.data.get("safety_checks", True)
+            provider = call.data.get("provider", "")
+
+            # Call the agent's test_automation method
+            result = await agent.test_automation(
+                automation=automation,
+                dry_run=dry_run,
+                safety_checks=safety_checks,
+                provider=provider
+            )
+            return result
+
+        except Exception as e:
+            _LOGGER.exception("Error testing automation: %s", str(e))
+            return {
+                "success": False,
+                "error": f"Failed to test automation: {str(e)}",
+            }
+
+    async def async_handle_simulate_action(call):
+        """Handle the simulate_action service call."""
+        try:
+            agent = hass.data[DOMAIN].get("agents")
+            if agent is None:
+                _LOGGER.error("AI Agent not initialized")
+                return {
+                    "success": False,
+                    "error": "AI Agent not initialized",
+                }
+
+            domain = call.data.get("domain")
+            service = call.data.get("service")
+            target = call.data.get("target", {})
+            service_data = call.data.get("service_data", {})
+
+            # Call the agent's simulate_action method
+            result = await agent.simulate_action(
+                domain=domain,
+                service=service,
+                target=target,
+                service_data=service_data
+            )
+            return result
+
+        except Exception as e:
+            _LOGGER.exception("Error simulating action: %s", str(e))
+            return {
+                "success": False,
+                "error": f"Failed to simulate action: {str(e)}",
+            }
+
+    async def async_handle_test_automation_from_nl(call):
+        """Handle the test_automation_from_nl service call."""
+        try:
+            agent = hass.data[DOMAIN].get("agents")
+            if agent is None:
+                _LOGGER.error("AI Agent not initialized")
+                return {
+                    "success": False,
+                    "error": "AI Agent not initialized",
+                }
+
+            natural_language = call.data.get("natural_language")
+            if not natural_language:
+                return {
+                    "success": False,
+                    "error": "Natural language description is required",
+                }
+
+            safety_checks = call.data.get("safety_checks", True)
+            provider = call.data.get("provider", "")
+
+            # Call the agent's test_automation_from_nl method
+            result = await agent.test_automation_from_nl(
+                natural_language=natural_language,
+                safety_checks=safety_checks,
+                provider=provider
+            )
+            return result
+
+        except Exception as e:
+            _LOGGER.exception("Error testing automation from natural language: %s", str(e))
+            return {
+                "success": False,
+                "error": f"Failed to test automation: {str(e)}",
+            }
+
     hass.services.async_register(DOMAIN, "get_audit_logs", async_handle_get_audit_logs, schema=GET_AUDIT_LOGS_SCHEMA)
     hass.services.async_register(DOMAIN, "get_audit_log_statistics", async_handle_get_audit_log_statistics, schema=GET_AUDIT_LOG_STATISTICS_SCHEMA)
     hass.services.async_register(DOMAIN, "export_audit_logs", async_handle_export_audit_logs, schema=EXPORT_AUDIT_LOGS_SCHEMA)
@@ -2792,6 +2926,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.services.async_register(DOMAIN, "voice_query", async_handle_voice_query, schema=VOICE_QUERY_SCHEMA)
     hass.services.async_register(DOMAIN, "get_tts_engines", async_handle_get_tts_engines)
     hass.services.async_register(DOMAIN, "get_tts_voices", async_handle_get_tts_voices, schema=GET_TTS_VOICES_SCHEMA)
+
+    # Register Automation Testing/Simulation Mode (A3) services
+    hass.services.async_register(DOMAIN, "test_automation", async_handle_test_automation, schema=TEST_AUTOMATION_SCHEMA)
+    hass.services.async_register(DOMAIN, "simulate_action", async_handle_simulate_action, schema=SIMULATE_ACTION_SCHEMA)
+    hass.services.async_register(DOMAIN, "test_automation_from_nl", async_handle_test_automation_from_nl, schema=TEST_AUTOMATION_FROM_NL_SCHEMA)
 
     # Register static path for frontend
     await hass.http.async_register_static_paths(

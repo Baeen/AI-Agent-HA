@@ -3428,6 +3428,441 @@ class AiAgentHaAgent:
             _LOGGER.exception("Error creating automation: %s", str(e))
             return {"error": f"Error creating automation: {str(e)}"}
 
+    # === Automation Testing/Simulation Mode (A3) ===
+    async def test_automation(
+        self,
+        automation: Dict[str, Any],
+        dry_run: bool = True,
+        safety_checks: bool = True,
+        provider: str = ""
+    ) -> Dict[str, Any]:
+        """Test an automation in simulation mode without executing dangerous actions.
+        
+        Args:
+            automation: The automation configuration to test
+            dry_run: If True, only simulate without execution
+            safety_checks: If True, run enhanced safety checks
+            provider: Optional AI provider for analysis
+            
+        Returns:
+            Dictionary with simulation results, warnings, and recommendations
+        """
+        try:
+            _LOGGER.debug(
+                "Testing automation in simulation mode: dry_run=%s, safety_checks=%s",
+                dry_run,
+                safety_checks
+            )
+            
+            # Initialize action executor
+            executor = ActionExecutor(self.hass)
+            
+            # Validate automation structure
+            validation_result = self._validate_automation_structure(automation)
+            if not validation_result["valid"]:
+                return {
+                    "success": False,
+                    "error": "Invalid automation structure",
+                    "validation_errors": validation_result["errors"]
+                }
+            
+            # Extract actions from automation
+            actions = self._extract_actions_from_automation(automation)
+            if not actions:
+                return {
+                    "success": False,
+                    "error": "No actions found in automation"
+                }
+            
+            # Simulate each action
+            simulations = []
+            for i, action in enumerate(actions):
+                action_id = action.get("action_id", f"test_action_{i}")
+                simulation = await executor.simulate_action(action, action_id)
+                simulations.append({
+                    "action_id": simulation.action_id,
+                    "domain": simulation.domain,
+                    "service": simulation.service,
+                    "would_succeed": simulation.would_succeed,
+                    "warnings": simulation.warnings,
+                    "recommendations": simulation.recommendations
+                })
+            
+            # Run enhanced safety checks if enabled
+            safety_analysis = None
+            if safety_checks:
+                safety_analysis = self._analyze_automation_safety(
+                    automation,
+                    simulations
+                )
+            
+            # Generate overall result
+            failed_simulations = [s for s in simulations if not s["would_succeed"]]
+            
+            result = {
+                "success": True,
+                "simulation_mode": True,
+                "dry_run": dry_run,
+                "automation_alias": automation.get("alias", "Unnamed Automation"),
+                "total_actions": len(simulations),
+                "passed_actions": len(simulations) - len(failed_simulations),
+                "failed_actions": len(failed_simulations),
+                "simulations": simulations,
+                "safety_analysis": safety_analysis,
+                "would_execute": not dry_run and not failed_simulations
+            }
+            
+            if failed_simulations:
+                result["warning"] = (
+                    f"{len(failed_simulations)} action(s) failed simulation. "
+                    "Review warnings before enabling."
+                )
+            
+            _LOGGER.debug(
+                "Automation test complete: %d passed, %d failed",
+                result["passed_actions"],
+                result["failed_actions"]
+            )
+            
+            return result
+            
+        except Exception as e:
+            _LOGGER.exception("Error testing automation: %s", str(e))
+            return {
+                "success": False,
+                "error": f"Failed to test automation: {str(e)}"
+            }
+
+    async def simulate_action(
+        self,
+        domain: str,
+        service: str,
+        target: Dict[str, Any] = None,
+        service_data: Dict[str, Any] = None
+    ) -> Dict[str, Any]:
+        """Simulate a single service call action.
+        
+        Args:
+            domain: The service domain (e.g., 'light', 'switch')
+            service: The service name (e.g., 'turn_on', 'turn_off')
+            target: The target entities
+            service_data: The service data
+            
+        Returns:
+            Dictionary with simulation results, warnings, and recommendations
+        """
+        try:
+            if target is None:
+                target = {}
+            if service_data is None:
+                service_data = {}
+            
+            action = {
+                "domain": domain,
+                "service": service,
+                "target": target,
+                "service_data": service_data
+            }
+            
+            # Initialize action executor
+            executor = ActionExecutor(self.hass)
+            
+            # Simulate the action
+            simulation = await executor.simulate_action(action, "simulated_action")
+            
+            result = {
+                "success": True,
+                "simulation_mode": True,
+                "domain": domain,
+                "service": service,
+                "would_succeed": simulation.would_succeed,
+                "warnings": simulation.warnings,
+                "recommendations": simulation.recommendations
+            }
+            
+            if not simulation.would_succeed:
+                result["error"] = "Action simulation failed validation"
+            
+            return result
+            
+        except Exception as e:
+            _LOGGER.exception("Error simulating action: %s", str(e))
+            return {
+                "success": False,
+                "error": f"Failed to simulate action: {str(e)}"
+            }
+
+    async def test_automation_from_nl(
+        self,
+        natural_language: str,
+        safety_checks: bool = True,
+        provider: str = ""
+    ) -> Dict[str, Any]:
+        """Convert natural language to automation and test in simulation mode.
+        
+        Args:
+            natural_language: The natural language description
+            safety_checks: If True, run enhanced safety checks
+            provider: Optional AI provider for conversion
+            
+        Returns:
+            Dictionary with converted automation and simulation results
+        """
+        try:
+            # First, convert natural language to automation
+            conversion_result = await self.convert_nl_to_automation(natural_language, provider)
+            
+            if not conversion_result.get("success"):
+                return {
+                    "success": False,
+                    "error": "Failed to convert natural language to automation",
+                    "details": conversion_result.get("error", "Unknown error")
+                }
+            
+            automation = conversion_result.get("automation")
+            if not automation:
+                return {
+                    "success": False,
+                    "error": "No automation generated from natural language"
+                }
+            
+            # Now test the automation in simulation mode
+            test_result = await self.test_automation(
+                automation=automation,
+                dry_run=True,
+                safety_checks=safety_checks
+            )
+            
+            # Combine results
+            result = {
+                "success": True,
+                "simulation_mode": True,
+                "natural_language": natural_language,
+                "converted_automation": automation,
+                "conversion_explanation": conversion_result.get("explanation", ""),
+                "test_results": test_result
+            }
+            
+            return result
+            
+        except Exception as e:
+            _LOGGER.exception("Error testing automation from natural language: %s", str(e))
+            return {
+                "success": False,
+                "error": f"Failed to test automation from natural language: {str(e)}"
+            }
+
+    def _validate_automation_structure(
+        self, automation: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Validate the structure of an automation configuration.
+        
+        Args:
+            automation: The automation configuration to validate
+            
+        Returns:
+            Dictionary with validity status and errors list
+        """
+        errors = []
+        
+        # Check required fields
+        if "trigger" not in automation:
+            errors.append("Missing required field: 'trigger'")
+        
+        if "action" not in automation:
+            errors.append("Missing required field: 'action'")
+        
+        # Validate trigger structure
+        if "trigger" in automation:
+            trigger = automation["trigger"]
+            if isinstance(trigger, dict):
+                triggers = [trigger]
+            elif isinstance(trigger, list):
+                triggers = trigger
+            else:
+                errors.append("Invalid trigger format: expected dict or list")
+                triggers = []
+            
+            for i, trig in enumerate(triggers):
+                if "platform" not in trig:
+                    errors.append(f"Trigger {i}: Missing required field: 'platform'")
+        
+        # Validate action structure
+        if "action" in automation:
+            action = automation["action"]
+            if isinstance(action, dict):
+                actions = [action]
+            elif isinstance(action, list):
+                actions = action
+            else:
+                errors.append("Invalid action format: expected dict or list")
+                actions = []
+            
+            for i, act in enumerate(actions):
+                if "service" not in act and "service_call" not in act:
+                    errors.append(f"Action {i}: Missing required field: 'service'")
+        
+        return {
+            "valid": len(errors) == 0,
+            "errors": errors
+        }
+
+    def _extract_actions_from_automation(
+        self, automation: Dict[str, Any]
+    ) -> List[Dict[str, Any]]:
+        """Extract actions from an automation configuration.
+        
+        Args:
+            automation: The automation configuration
+            
+        Returns:
+            List of action dictionaries
+        """
+        actions = []
+        
+        raw_actions = automation.get("action", [])
+        if isinstance(raw_actions, dict):
+            raw_actions = [raw_actions]
+        
+        for i, action in enumerate(raw_actions):
+            # Convert automation action format to executor action format
+            executor_action = {
+                "action_id": f"automation_action_{i}"
+            }
+            
+            # Extract service call
+            service = action.get("service", "")
+            if "." in service:
+                domain, service_name = service.split(".", 1)
+                executor_action["domain"] = domain
+                executor_action["service"] = service_name
+            else:
+                executor_action["domain"] = ""
+                executor_action["service"] = service
+            
+            # Extract target
+            if "target" in action:
+                executor_action["target"] = action["target"]
+            elif "entity_id" in action:
+                executor_action["target"] = {"entity_id": action["entity_id"]}
+            else:
+                executor_action["target"] = {}
+            
+            # Extract service data (exclude target-related fields)
+            service_data = {k: v for k, v in action.items()
+                          if k not in ["service", "target", "entity_id", "action_id"]}
+            executor_action["service_data"] = service_data
+            
+            actions.append(executor_action)
+        
+        return actions
+
+    def _analyze_automation_safety(
+        self,
+        automation: Dict[str, Any],
+        simulations: List[Dict[str, Any]]
+    ) -> Dict[str, Any]:
+        """Analyze the safety of an automation configuration.
+        
+        Args:
+            automation: The automation configuration
+            simulations: List of simulation results
+            
+        Returns:
+            Dictionary with safety analysis results
+        """
+        dangerous_patterns = {
+            "domain": ["script", "shell_command", "scene"],
+            "risk_levels": {
+                "high": ["shell_command", "execute_command", "call_service"],
+                "medium": ["script", "scene", "light.turn_on", "light.turn_off"],
+                "low": ["switch", "light", "climate", "cover"]
+            }
+        }
+        
+        risk_level = "low"
+        concerns = []
+        
+        # Check for dangerous services
+        for sim in simulations:
+            domain = sim.get("domain", "")
+            service = sim.get("service", "")
+            
+            if domain in dangerous_patterns["high"]:
+                risk_level = "high"
+                concerns.append(
+                    f"High-risk action detected: {domain}.{service}"
+                )
+            elif domain in dangerous_patterns["medium"]:
+                if risk_level != "high":
+                    risk_level = "medium"
+                    concerns.append(
+                        f"Medium-risk action detected: {domain}.{service}"
+                    )
+        
+        # Check for missing conditions
+        if "condition" not in automation:
+            if risk_level in ["medium", "high"]:
+                concerns.append(
+                    "Automation lacks conditions - may execute unexpectedly"
+                )
+        
+        # Check for missing mode
+        if "mode" not in automation:
+            concerns.append("Automation lacks mode setting - defaults to 'single'")
+        
+        return {
+            "risk_level": risk_level,
+            "concerns": concerns,
+            "recommendations": self._generate_safety_recommendations(
+                risk_level, concerns
+            )
+        }
+
+    def _generate_safety_recommendations(
+        self, risk_level: str, concerns: List[str]
+    ) -> List[str]:
+        """Generate safety recommendations based on risk level and concerns.
+        
+        Args:
+            risk_level: The identified risk level
+            concerns: List of safety concerns
+            
+        Returns:
+            List of recommendations
+        """
+        recommendations = []
+        
+        if risk_level == "high":
+            recommendations.append(
+                "HIGH RISK: Manual review required before enabling this automation"
+            )
+            recommendations.append(
+                "Consider adding multiple conditions to prevent accidental execution"
+            )
+            recommendations.append(
+                "Test with safe entities first before using with critical devices"
+            )
+        elif risk_level == "medium":
+            recommendations.append(
+                "Add conditions to prevent unexpected execution"
+            )
+            recommendations.append(
+                "Consider adding a delay before actions execute"
+            )
+        
+        if any("lacks conditions" in c for c in concerns):
+            recommendations.append(
+                "Add at least one condition to prevent unconditional execution"
+            )
+        
+        if any("lacks mode" in c for c in concerns):
+            recommendations.append(
+                "Consider adding mode: 'restart' or 'parallel' for better control"
+            )
+        
+        return recommendations
+
     async def get_dashboards(self) -> List[Dict[str, Any]]:
         """Get list of all dashboards."""
         try:

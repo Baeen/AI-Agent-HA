@@ -148,6 +148,18 @@ CONF_VOICE_TTS_ENABLED = "voice_tts_enabled"
 CONF_VOICE_TTS_ENGINE = "voice_tts_engine"
 CONF_VOICE_TTS_VOICE = "voice_tts_voice"
 
+# Automation Testing/Simulation Mode (A3) configuration
+CONF_SIMULATION_MODE_ENABLED = "simulation_mode_enabled"
+CONF_SIMULATION_DANGEROUS_ACTION_BLOCKING = "simulation_dangerous_action_blocking"
+CONF_SIMULATION_REQUIRE_APPROVAL = "simulation_require_approval"
+CONF_SIMULATION_LOG_LEVEL = "simulation_log_level"
+
+# Default values for simulation mode
+DEFAULT_SIMULATION_MODE_ENABLED = True
+DEFAULT_SIMULATION_DANGEROUS_ACTION_BLOCKING = True
+DEFAULT_SIMULATION_REQUIRE_APPROVAL = True
+DEFAULT_SIMULATION_LOG_LEVEL = "info"
+
 # Default voice settings
 DEFAULT_VOICE_ENABLED = True
 DEFAULT_VOICE_TTS_ENABLED = True
