@@ -47,6 +47,12 @@ class AiAgentHaPanel extends LitElement {
       _attachedImages: { type: Array, reflect: false, attribute: false },
       _imageUploadEnabled: { type: Boolean, reflect: false, attribute: false },
       _maxImagesPerMessage: { type: Number, reflect: false, attribute: false },
+      // Chat history state
+      _conversations: { type: Array, reflect: false, attribute: false },
+      _currentConversationId: { type: String, reflect: false, attribute: false },
+      _showHistorySidebar: { type: Boolean, reflect: false, attribute: false },
+      _conversationSearchQuery: { type: String, reflect: false, attribute: false },
+      _contextMenu: { type: Object, reflect: false, attribute: false },
     };
   }
 
@@ -796,6 +802,242 @@ class AiAgentHaPanel extends LitElement {
       .remove-image:hover {
         background: rgba(255, 0, 0, 0.8);
       }
+      
+      /* Chat History Sidebar */
+      .sidebar-toggle {
+        background: none;
+        border: none;
+        cursor: pointer;
+        padding: 4px;
+        color: var(--primary-text-color);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: opacity 0.2s ease;
+      }
+      .sidebar-toggle:hover {
+        opacity: 0.8;
+      }
+      .sidebar-toggle ha-icon {
+        --mdc-icon-size: 24px;
+      }
+      .main-layout {
+        display: flex;
+        flex-grow: 1;
+        overflow: hidden;
+        position: relative;
+      }
+      .sidebar {
+        width: 320px;
+        min-width: 280px;
+        max-width: 320px;
+        background: var(--secondary-background-color);
+        border-right: 1px solid var(--divider-color);
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+        animation: slideIn 0.2s ease-out;
+        overflow: hidden;
+      }
+      @keyframes slideIn {
+        from { transform: translateX(-100%); }
+        to { transform: translateX(0); }
+      }
+      .sidebar-header {
+        padding: 16px;
+        border-bottom: 1px solid var(--divider-color);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+      .sidebar-header h3 {
+        margin: 0;
+        font-size: 16px;
+        font-weight: 600;
+        color: var(--primary-text-color);
+      }
+      .new-conversation-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        width: 100%;
+        padding: 12px;
+        background: var(--primary-color);
+        color: var(--text-primary-color);
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: 500;
+        transition: all 0.2s ease;
+        margin: 12px 16px;
+      }
+      .new-conversation-btn:hover {
+        opacity: 0.9;
+        transform: translateY(-1px);
+      }
+      .sidebar-search {
+        padding: 12px 16px;
+        border-bottom: 1px solid var(--divider-color);
+      }
+      .sidebar-search input {
+        width: 100%;
+        padding: 8px 12px;
+        border: 1px solid var(--divider-color);
+        border-radius: 8px;
+        font-size: 14px;
+        background: var(--primary-background-color);
+        color: var(--primary-text-color);
+        font-family: inherit;
+        box-sizing: border-box;
+      }
+      .sidebar-search input:focus {
+        outline: none;
+        border-color: var(--primary-color);
+        box-shadow: 0 0 0 2px rgba(var(--primary-color-rgb), 0.1);
+      }
+      .sidebar-search input::placeholder {
+        color: var(--secondary-text-color);
+      }
+      .conversation-list {
+        flex-grow: 1;
+        overflow-y: auto;
+        padding: 8px;
+      }
+      .conversation-item {
+        padding: 12px;
+        border-radius: 8px;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        margin-bottom: 4px;
+        border: 1px solid transparent;
+      }
+      .conversation-item:hover {
+        background: var(--primary-background-color);
+        border-color: var(--divider-color);
+      }
+      .conversation-item.active {
+        background: var(--primary-color);
+        color: var(--text-primary-color);
+        border-color: var(--primary-color);
+      }
+      .conversation-item.pinned {
+        border-left: 3px solid var(--warning-color, #ff9800);
+      }
+      .conversation-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 4px;
+      }
+      .conversation-name {
+        font-weight: 500;
+        font-size: 14px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .conversation-item.active .conversation-name {
+        color: var(--text-primary-color);
+      }
+      .pinned-icon {
+        --mdc-icon-size: 14px;
+        color: var(--warning-color, #ff9800);
+        flex-shrink: 0;
+        margin-left: 4px;
+      }
+      .conversation-item.active .pinned-icon {
+        color: var(--text-primary-color);
+      }
+      .conversation-preview {
+        font-size: 12px;
+        color: var(--secondary-text-color);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        margin-bottom: 4px;
+      }
+      .conversation-item.active .conversation-preview {
+        color: rgba(var(--text-primary-color-rgb), 0.8);
+      }
+      .conversation-meta {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        font-size: 11px;
+        color: var(--secondary-text-color);
+      }
+      .conversation-item.active .conversation-meta {
+        color: rgba(var(--text-primary-color-rgb), 0.7);
+      }
+      .conversation-tags {
+        display: flex;
+        gap: 4px;
+      }
+      .tag-badge {
+        background: var(--primary-background-color);
+        padding: 2px 6px;
+        border-radius: 4px;
+        font-size: 10px;
+      }
+      .conversation-item.active .tag-badge {
+        background: rgba(var(--text-primary-color-rgb), 0.2);
+      }
+      .context-menu {
+        position: fixed;
+        background: var(--card-background-color);
+        border-radius: 8px;
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+        z-index: 1000;
+        min-width: 160px;
+        padding: 4px 0;
+      }
+      .context-menu-item {
+        padding: 10px 16px;
+        cursor: pointer;
+        font-size: 14px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        transition: background-color 0.2s ease;
+      }
+      .context-menu-item:hover {
+        background: var(--primary-background-color);
+      }
+      .context-menu-item.delete {
+        color: var(--error-color);
+      }
+      .context-menu-item.delete:hover {
+        background: rgba(var(--error-color-rgb), 0.1);
+      }
+      .context-menu-divider {
+        height: 1px;
+        background: var(--divider-color);
+        margin: 4px 0;
+      }
+      .empty-conversations {
+        padding: 32px 16px;
+        text-align: center;
+        color: var(--secondary-text-color);
+        font-size: 14px;
+      }
+      .content-area {
+        flex-grow: 1;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+      }
+      @media (max-width: 768px) {
+        .sidebar {
+          position: absolute;
+          top: 0;
+          left: 0;
+          height: 100%;
+          z-index: 200;
+          box-shadow: 4px 0 16px rgba(0, 0, 0, 0.2);
+        }
+      }
     `;
   }
 
@@ -835,6 +1077,12 @@ class AiAgentHaPanel extends LitElement {
     this._showThinking = false;
     this._thinkingExpanded = false;
     this._debugInfo = null;
+    // Chat history state
+    this._conversations = [];
+    this._currentConversationId = null;
+    this._showHistorySidebar = false;
+    this._conversationSearchQuery = '';
+    this._contextMenu = null;
     console.debug("AI Agent HA Panel constructor called");
   }
 
@@ -856,6 +1104,8 @@ class AiAgentHaPanel extends LitElement {
       console.debug("Event subscription set up in connectedCallback()");
       // Load prompt history from Home Assistant storage
       await this._loadPromptHistory();
+      // Load conversations list
+      await this._loadConversations();
     }
 
     // Close dropdown when clicking outside
@@ -863,7 +1113,20 @@ class AiAgentHaPanel extends LitElement {
       if (!this.shadowRoot.querySelector('.provider-selector')?.contains(e.target)) {
         this._showProviderDropdown = false;
       }
+      // Close context menu when clicking outside
+      if (this._contextMenu && !e.target.closest('.context-menu')) {
+        this._contextMenu = null;
+        this.requestUpdate();
+      }
     });
+  }
+
+  disconnectedCallback() {
+    super.disconnectedCallback();
+    // Auto-save current conversation when panel is closed
+    if (this.hass && this._messages.length > 0) {
+      this._saveCurrentConversation();
+    }
   }
 
   async updated(changedProps) {
@@ -1164,6 +1427,9 @@ class AiAgentHaPanel extends LitElement {
 
     return html`
       <div class="header">
+        <button class="sidebar-toggle" @click=${() => this._toggleHistorySidebar()} title="Toggle conversation history">
+          <ha-icon icon="${this._showHistorySidebar ? 'mdi:close-box' : 'mdi:history'}"></ha-icon>
+        </button>
         <ha-icon icon="mdi:robot"></ha-icon>
         AI Agent HA
         <button
@@ -1176,149 +1442,238 @@ class AiAgentHaPanel extends LitElement {
         </button>
       </div>
       <div class="content">
-        <div class="chat-container">
-          <div class="messages" id="messages">
-            ${this._messages.map(msg => html`
-              <div class="message-container">
-                <div class="message ${msg.type}-message">
-                  ${this._renderMessageContent(msg)}
-                  ${msg.automation ? html`
-                  <div class="automation-suggestion">
-                    <div class="automation-title">${msg.automation.alias}</div>
-                    <div class="automation-description">${msg.automation.description}</div>
-                    <div class="automation-details">
-                      ${JSON.stringify(msg.automation, null, 2)}
+        <div class="main-layout">
+          ${this._showHistorySidebar ? html`
+            <div class="sidebar">
+              <div class="sidebar-header">
+                <h3>Conversation History</h3>
+                <span style="font-size: 12px; color: var(--secondary-text-color);">
+                  ${this._conversations.length} conversation${this._conversations.length !== 1 ? 's' : ''}
+                </span>
+              </div>
+              <button class="new-conversation-btn" @click=${() => this._createNewConversation()}>
+                <ha-icon icon="mdi:plus"></ha-icon>
+                <span>New Conversation</span>
+              </button>
+              <div class="sidebar-search">
+                <input
+                  type="text"
+                  placeholder="Search conversations..."
+                  .value=${this._conversationSearchQuery}
+                  @input=${(e) => this._handleConversationSearch(e.target.value)}
+                />
+              </div>
+              <div class="conversation-list">
+                ${this._filteredConversations.length === 0 ? html`
+                  <div class="empty-conversations">
+                    ${this._conversations.length === 0 ? 'No conversations yet' : 'No matching conversations'}
+                  </div>
+                ` : this._filteredConversations.map(conv => html`
+                  <div class="conversation-item ${conv.conversation_id === this._currentConversationId ? 'active' : ''} ${conv.is_pinned ? 'pinned' : ''}"
+                       @click=${() => this._loadConversation(conv.conversation_id)}
+                       @contextmenu=${(e) => this._showContextMenu(e, conv.conversation_id)}>
+                    <div class="conversation-header">
+                      <span class="conversation-name">${conv.name || 'New Conversation'}</span>
+                      ${conv.is_pinned ? html`<ha-icon icon="mdi:pin" class="pinned-icon"></ha-icon>` : ''}
                     </div>
-                    <div class="automation-actions">
-                      <ha-button
-                        @click=${() => this._approveAutomation(msg.automation)}
-                        .disabled=${this._isLoading}
-                      >Approve</ha-button>
-                      <ha-button
-                        @click=${() => this._rejectAutomation()}
-                        .disabled=${this._isLoading}
-                      >Reject</ha-button>
+                    <div class="conversation-preview">${conv.preview || 'No preview'}</div>
+                    <div class="conversation-meta">
+                      <span>${this._formatConversationDate(conv.updated_at || conv.created_at)}</span>
+                      <div class="conversation-tags">
+                        ${conv.tags?.slice(0, 2).map(tag => html`<span class="tag-badge">${tag}</span>`)}
+                      </div>
                     </div>
                   </div>
-                ` : ''}
-                ${msg.dashboard ? html`
-                  <div class="dashboard-suggestion">
-                    <div class="dashboard-title">${msg.dashboard.title}</div>
-                    <div class="dashboard-description">Dashboard with ${msg.dashboard.views ? msg.dashboard.views.length : 0} view(s)</div>
-                    <div class="dashboard-details">
-                      ${JSON.stringify(msg.dashboard, null, 2)}
-                    </div>
-                    <div class="dashboard-actions">
-                      <ha-button
-                        @click=${() => this._approveDashboard(msg.dashboard)}
-                        .disabled=${this._isLoading}
-                      >Create Dashboard</ha-button>
-                      <ha-button
-                        @click=${() => this._rejectDashboard()}
-                        .disabled=${this._isLoading}
-                      >Cancel</ha-button>
-                    </div>
-                  </div>
-                ` : ''}
-                </div>
-              </div>
-            `)}
-            ${this._isLoading ? html`
-              <div class="loading">
-                <span>AI Agent is thinking</span>
-                <div class="loading-dots">
-                  <div class="dot"></div>
-                  <div class="dot"></div>
-                  <div class="dot"></div>
-                </div>
-              </div>
-            ` : ''}
-            ${this._error ? html`
-              <div class="error">${this._error}</div>
-            ` : ''}
-            ${this._showThinking ? this._renderThinkingPanel() : ''}
-          </div>
-          ${this._renderPromptsSection()}
-          <div class="input-container">
-            <!-- Hidden file input for image upload -->
-            <input
-              type="file"
-              id="imageUpload"
-              accept="image/jpeg,image/png,image/webp,image/gif"
-              multiple
-              style="display: none;"
-              @change=${this._handleImageSelect}
-            ></input>
-            
-            <div class="input-main">
-              <!-- Attached images preview -->
-              ${this._attachedImages.length > 0 ? html`
-                <div class="attached-images">
-                  ${this._attachedImages.map((img, index) => html`
-                    <div class="image-preview">
-                      <img src="data:image/jpeg;base64,${img.data}" alt="${img.original_name}" />
-                      <button class="remove-image" @click="${() => this._removeImage(index)}">
-                        ×
-                      </button>
-                    </div>
-                  `)}
-                </div>
-              ` : ''}
-              <div class="input-wrapper">
-                <textarea
-                  id="prompt"
-                  placeholder="Ask me anything about your Home Assistant... (Images: ${this._attachedImages.length}/${this._maxImagesPerMessage})"
-                  ?disabled=${this._isLoading}
-                  @keydown=${this._handleKeyDown}
-                  @input=${this._autoResize}
-                ></textarea>
+                `)}
               </div>
             </div>
-
-            <div class="input-footer">
-              <div class="provider-selector">
-                <span class="provider-label">Model:</span>
-                <select
-                  class="provider-button"
-                  @change=${(e) => this._selectProvider(e.target.value)}
-                  .value=${this._selectedProvider || ''}
-                >
-                  ${this._availableProviders.map(provider => html`
-                    <option
-                      value=${provider.value}
-                      ?selected=${provider.value === this._selectedProvider}
-                    >
-                      ${provider.label}
-                    </option>
-                  `)}
-                </select>
+          ` : ''}
+          <div class="content-area">
+            <div class="chat-container">
+              <div class="messages" id="messages">
+                ${this._messages.map(msg => html`
+                  <div class="message-container">
+                    <div class="message ${msg.type}-message">
+                      ${this._renderMessageContent(msg)}
+                      ${msg.automation ? html`
+                      <div class="automation-suggestion">
+                        <div class="automation-title">${msg.automation.alias}</div>
+                        <div class="automation-description">${msg.automation.description}</div>
+                        <div class="automation-details">
+                          ${JSON.stringify(msg.automation, null, 2)}
+                        </div>
+                        <div class="automation-actions">
+                          <ha-button
+                            @click=${() => this._approveAutomation(msg.automation)}
+                            .disabled=${this._isLoading}
+                          >Approve</ha-button>
+                          <ha-button
+                            @click=${() => this._rejectAutomation()}
+                            .disabled=${this._isLoading}
+                          >Reject</ha-button>
+                        </div>
+                      </div>
+                    ` : ''}
+                    ${msg.dashboard ? html`
+                      <div class="dashboard-suggestion">
+                        <div class="dashboard-title">${msg.dashboard.title}</div>
+                        <div class="dashboard-description">Dashboard with ${msg.dashboard.views ? msg.dashboard.views.length : 0} view(s)</div>
+                        <div class="dashboard-details">
+                          ${JSON.stringify(msg.dashboard, null, 2)}
+                        </div>
+                        <div class="dashboard-actions">
+                          <ha-button
+                            @click=${() => this._approveDashboard(msg.dashboard)}
+                            .disabled=${this._isLoading}
+                          >Create Dashboard</ha-button>
+                          <ha-button
+                            @click=${() => this._rejectDashboard()}
+                            .disabled=${this._isLoading}
+                          >Cancel</ha-button>
+                        </div>
+                      </div>
+                    ` : ''}
+                    </div>
+                  </div>
+                `)}
+                ${this._isLoading ? html`
+                  <div class="loading">
+                    <span>AI Agent is thinking</span>
+                    <div class="loading-dots">
+                      <div class="dot"></div>
+                      <div class="dot"></div>
+                      <div class="dot"></div>
+                    </div>
+                  </div>
+                ` : ''}
+                ${this._error ? html`
+                  <div class="error">${this._error}</div>
+                ` : ''}
+                ${this._showThinking ? this._renderThinkingPanel() : ''}
               </div>
-              ${this._imageUploadEnabled ? html`
-                <button class="image-btn" @click="${this._triggerImageUpload}" title="Attach image">
-                  <ha-icon icon="mdi:image"></ha-icon>
-                </button>
-              ` : ''}
-              <label class="thinking-toggle">
+              ${this._renderPromptsSection()}
+              <div class="input-container">
+                <!-- Hidden file input for image upload -->
                 <input
-                  type="checkbox"
-                  .checked=${this._showThinking}
-                  @change=${(e) => this._toggleShowThinking(e)}
-                />
-                Show thinking
-              </label>
+                  type="file"
+                  id="imageUpload"
+                  accept="image/jpeg,image/png,image/webp,image/gif"
+                  multiple
+                  style="display: none;"
+                  @change=${this._handleImageSelect}
+                ></input>
+                
+                <div class="input-main">
+                  <!-- Attached images preview -->
+                  ${this._attachedImages.length > 0 ? html`
+                    <div class="attached-images">
+                      ${this._attachedImages.map((img, index) => html`
+                        <div class="image-preview">
+                          <img src="data:image/jpeg;base64,${img.data}" alt="${img.original_name}" />
+                          <button class="remove-image" @click="${() => this._removeImage(index)}">
+                            ×
+                          </button>
+                        </div>
+                      `)}
+                    </div>
+                  ` : ''}
+                  <div class="input-wrapper">
+                    <textarea
+                      id="prompt"
+                      placeholder="Ask me anything about your Home Assistant... (Images: ${this._attachedImages.length}/${this._maxImagesPerMessage})"
+                      ?disabled=${this._isLoading}
+                      @keydown=${this._handleKeyDown}
+                      @input=${this._autoResize}
+                    ></textarea>
+                  </div>
+                </div>
 
-              <ha-button
-                class="send-button"
-                @click=${this._sendMessage}
-                .disabled=${this._isLoading || !this._hasProviders()}
-              >
-                <ha-icon icon="mdi:send"></ha-icon>
-              </ha-button>
+                <div class="input-footer">
+                  <div class="provider-selector">
+                    <span class="provider-label">Model:</span>
+                    <select
+                      class="provider-button"
+                      @change=${(e) => this._selectProvider(e.target.value)}
+                      .value=${this._selectedProvider || ''}
+                    >
+                      ${this._availableProviders.map(provider => html`
+                        <option
+                          value=${provider.value}
+                          ?selected=${provider.value === this._selectedProvider}
+                        >
+                          ${provider.label}
+                        </option>
+                      `)}
+                    </select>
+                  </div>
+                  ${this._imageUploadEnabled ? html`
+                    <button class="image-btn" @click="${this._triggerImageUpload}" title="Attach image">
+                      <ha-icon icon="mdi:image"></ha-icon>
+                    </button>
+                  ` : ''}
+                  <label class="thinking-toggle">
+                    <input
+                      type="checkbox"
+                      .checked=${this._showThinking}
+                      @change=${(e) => this._toggleShowThinking(e)}
+                    />
+                    Show thinking
+                  </label>
+
+                  <ha-button
+                    class="send-button"
+                    @click=${this._sendMessage}
+                    .disabled=${this._isLoading || !this._hasProviders()}
+                  >
+                    <ha-icon icon="mdi:send"></ha-icon>
+                  </ha-button>
+                </div>
+              </div>
             </div>
           </div>
         </div>
       </div>
+      ${this._contextMenu ? this._renderContextMenu() : ''}
     `;
+  }
+  
+  /**
+   * Render the context menu for conversations
+   */
+  _renderContextMenu() {
+    if (!this._contextMenu) return '';
+    
+    return html`
+      <div class="context-menu" style="left: ${this._contextMenu.x}px; top: ${this._contextMenu.y}px;">
+        <div class="context-menu-item" @click=${() => this._renameConversation(this._contextMenu.conversationId, prompt('Enter new name:'))}>
+          <ha-icon icon="mdi:pencil"></ha-icon>
+          <span>Rename</span>
+        </div>
+        <div class="context-menu-item" @click=${() => this._pinConversation(this._contextMenu.conversationId)}>
+          <ha-icon icon="mdi:pin"></ha-icon>
+          <span>Pin</span>
+        </div>
+        <div class="context-menu-item" @click=${() => this._exportConversation(this._contextMenu.conversationId)}>
+          <ha-icon icon="mdi:download"></ha-icon>
+          <span>Export</span>
+        </div>
+        <div class="context-menu-divider"></div>
+        <div class="context-menu-item delete" @click=${() => this._deleteConversation(this._contextMenu.conversationId)}>
+          <ha-icon icon="mdi:delete"></ha-icon>
+          <span>Delete</span>
+        </div>
+      </div>
+    `;
+  }
+  
+  /**
+   * Toggle the history sidebar visibility
+   */
+  _toggleHistorySidebar() {
+    this._showHistorySidebar = !this._showHistorySidebar;
+    if (this._showHistorySidebar) {
+      this._loadConversations();
+    }
   }
 
   _scrollToBottom() {
@@ -1739,6 +2094,9 @@ class AiAgentHaPanel extends LitElement {
         const actionMessages = this._formatActionDetails(event.data.action_details);
         this._messages = [...this._messages, ...actionMessages];
       }
+      
+      // Auto-save the current conversation after receiving a response
+      this._saveCurrentConversation();
     } else {
       this._error = event.data.error || 'An error occurred';
       this._messages = [
@@ -1897,6 +2255,286 @@ class AiAgentHaPanel extends LitElement {
            changedProps.has('_showProviderDropdown');
   }
 
+  // ========== Chat History Methods ==========
+  
+  /**
+   * Load the list of conversations from the backend
+   */
+  async _loadConversations() {
+    if (!this.hass) return;
+    
+    try {
+      const result = await this.hass.callService('ai_agent_ha', 'get_conversations', {});
+      if (result && result.conversations) {
+        this._conversations = result.conversations;
+      } else if (result && Array.isArray(result)) {
+        this._conversations = result;
+      }
+    } catch (error) {
+      console.error('Error loading conversations:', error);
+    }
+  }
+  
+  /**
+   * Save the current conversation to the backend
+   */
+  async _saveCurrentConversation() {
+    if (!this.hass || this._messages.length === 0) return;
+    
+    try {
+      const conversationId = this._currentConversationId || crypto.randomUUID();
+      const messages = this._messages.map(msg => ({
+        type: msg.type,
+        text: msg.text,
+        ...(msg.images ? { images: msg.images } : {}),
+        ...(msg.automation ? { automation: msg.automation } : {}),
+        ...(msg.dashboard ? { dashboard: msg.dashboard } : {})
+      }));
+      
+      // Generate name from first user message
+      let name = '';
+      for (const msg of this._messages) {
+        if (msg.type === 'user') {
+          name = msg.text.slice(0, 50);
+          if (msg.text.length > 50) name += '...';
+          break;
+        }
+      }
+      if (!name) name = 'New Conversation';
+      
+      const result = await this.hass.callService('ai_agent_ha', 'save_conversation', {
+        conversation_id: conversationId,
+        name: name,
+        messages: messages
+      });
+      
+      if (result && result.success) {
+        if (!this._currentConversationId) {
+          this._currentConversationId = conversationId;
+        }
+        await this._loadConversations();
+      }
+    } catch (error) {
+      console.error('Error saving conversation:', error);
+    }
+  }
+  
+  /**
+   * Load a specific conversation
+   */
+  async _loadConversation(conversationId) {
+    if (!this.hass) return;
+    
+    try {
+      const result = await this.hass.callService('ai_agent_ha', 'get_conversation', {
+        conversation_id: conversationId
+      });
+      
+      if (result && result.messages) {
+        this._messages = result.messages;
+        this._currentConversationId = conversationId;
+        await this._loadConversations();
+        this.requestUpdate();
+      }
+    } catch (error) {
+      console.error('Error loading conversation:', error);
+    }
+  }
+  
+  /**
+   * Create a new conversation and reset the chat
+   */
+  _createNewConversation() {
+    this._messages = [];
+    this._currentConversationId = null;
+    this._error = null;
+    this._debugInfo = null;
+    this._pendingAutomation = null;
+    this.requestUpdate();
+  }
+  
+  /**
+   * Delete a conversation
+   */
+  async _deleteConversation(conversationId) {
+    if (!this.hass) return;
+    
+    if (!confirm('Are you sure you want to delete this conversation?')) return;
+    
+    try {
+      const result = await this.hass.callService('ai_agent_ha', 'delete_conversation', {
+        conversation_id: conversationId
+      });
+      
+      if (result && result.success) {
+        if (this._currentConversationId === conversationId) {
+          this._createNewConversation();
+        }
+        await this._loadConversations();
+      }
+    } catch (error) {
+      console.error('Error deleting conversation:', error);
+    }
+  }
+  
+  /**
+   * Rename a conversation
+   */
+  async _renameConversation(conversationId, newName) {
+    if (!this.hass || !newName || !newName.trim()) return;
+    
+    try {
+      const result = await this.hass.callService('ai_agent_ha', 'rename_conversation', {
+        conversation_id: conversationId,
+        name: newName.trim()
+      });
+      
+      if (result && result.success) {
+        await this._loadConversations();
+      }
+    } catch (error) {
+      console.error('Error renaming conversation:', error);
+    }
+  }
+  
+  /**
+   * Export a conversation as JSON
+   */
+  async _exportConversation(conversationId) {
+    if (!this.hass) return;
+    
+    try {
+      const result = await this.hass.callService('ai_agent_ha', 'export_conversation', {
+        conversation_id: conversationId
+      });
+      
+      if (result) {
+        const blob = new Blob([JSON.stringify(result, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `conversation-${conversationId}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }
+    } catch (error) {
+      console.error('Error exporting conversation:', error);
+    }
+  }
+  
+  /**
+   * Toggle pin status of a conversation
+   */
+  async _pinConversation(conversationId) {
+    if (!this.hass) return;
+    
+    try {
+      const result = await this.hass.callService('ai_agent_ha', 'pin_conversation', {
+        conversation_id: conversationId
+      });
+      
+      if (result && result.success) {
+        await this._loadConversations();
+      }
+    } catch (error) {
+      console.error('Error pinning conversation:', error);
+    }
+  }
+  
+  /**
+   * Add a tag to a conversation
+   */
+  async _addTagToConversation(conversationId, tag) {
+    if (!this.hass || !tag) return;
+    
+    try {
+      const result = await this.hass.callService('ai_agent_ha', 'add_tag', {
+        conversation_id: conversationId,
+        tag: tag.trim()
+      });
+      
+      if (result && result.success) {
+        await this._loadConversations();
+      }
+    } catch (error) {
+      console.error('Error adding tag:', error);
+    }
+  }
+  
+  /**
+   * Handle conversation search/filter
+   */
+  _handleConversationSearch(query) {
+    this._conversationSearchQuery = query;
+  }
+  
+  /**
+   * Get filtered conversations based on search query
+   */
+  get _filteredConversations() {
+    if (!this._conversationSearchQuery || !this._conversationSearchQuery.trim()) {
+      return this._conversations;
+    }
+    
+    const query = this._conversationSearchQuery.toLowerCase();
+    return this._conversations.filter(conv => {
+      return (
+        (conv.name && conv.name.toLowerCase().includes(query)) ||
+        (conv.preview && conv.preview.toLowerCase().includes(query)) ||
+        (conv.tags && conv.tags.some(tag => tag.toLowerCase().includes(query))) ||
+        (conv.conversation_id && conv.conversation_id.includes(query))
+      );
+    });
+  }
+  
+  /**
+   * Format date for display
+   */
+  _formatConversationDate(dateString) {
+    if (!dateString) return '';
+    
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffMs = now - date;
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+    
+    if (diffDays === 0) {
+      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    } else if (diffDays === 1) {
+      return 'Yesterday';
+    } else if (diffDays < 7) {
+      return `${diffDays} days ago`;
+    } else {
+      return date.toLocaleDateString();
+    }
+  }
+  
+  /**
+   * Show context menu for a conversation
+   */
+  _showContextMenu(event, conversationId) {
+    event.preventDefault();
+    event.stopPropagation();
+    
+    this._contextMenu = {
+      x: event.clientX,
+      y: event.clientY,
+      conversationId: conversationId
+    };
+    
+    this.requestUpdate();
+  }
+  
+  /**
+   * Hide context menu
+   */
+  _hideContextMenu() {
+    this._contextMenu = null;
+    this.requestUpdate();
+  }
+  
   _clearChat() {
     this._messages = [];
     this._clearLoadingState();

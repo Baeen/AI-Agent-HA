@@ -1843,6 +1843,55 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     )
 
     # Chat History services
+    
+    # Schema for save_conversation service
+    SAVE_CONVERSATION_SCHEMA = vol.Schema(
+        {
+            vol.Required("conversation_id"): cv.string,
+            vol.Required("messages"): [dict],
+            vol.Optional("name"): cv.string,
+        }
+    )
+    
+    # Schema for get_conversation service
+    GET_CONVERSATION_SCHEMA = vol.Schema(
+        {
+            vol.Required("conversation_id"): cv.string,
+        }
+    )
+    
+    async def async_handle_save_conversation(call):
+        """Save a conversation."""
+        try:
+            manager = hass.data[DOMAIN].get("chat_history_manager")
+            if not manager:
+                return {"success": False, "error": "Chat history manager not initialized"}
+            
+            success = await manager.save_conversation(
+                call.data["conversation_id"],
+                call.data["messages"],
+                call.data.get("name", ""),
+            )
+            return {"success": success}
+        except Exception as e:
+            _LOGGER.error("Error saving conversation: %s", str(e))
+            return {"success": False, "error": str(e)}
+    
+    async def async_handle_get_conversation(call):
+        """Get a specific conversation."""
+        try:
+            manager = hass.data[DOMAIN].get("chat_history_manager")
+            if not manager:
+                return {"success": False, "error": "Chat history manager not initialized"}
+            
+            messages = await manager.get_conversation(call.data["conversation_id"])
+            if messages is None:
+                return {"success": False, "error": "Conversation not found"}
+            return {"success": True, "messages": messages}
+        except Exception as e:
+            _LOGGER.error("Error getting conversation: %s", str(e))
+            return {"success": False, "error": str(e)}
+    
     async def async_handle_get_conversations(call):
         """Get list of all saved conversations."""
         try:
@@ -1981,6 +2030,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             return {"success": False, "error": str(e)}
 
     # Register chat history services
+    hass.services.async_register(
+        DOMAIN, "save_conversation", async_handle_save_conversation, schema=SAVE_CONVERSATION_SCHEMA
+    )
+    hass.services.async_register(
+        DOMAIN, "get_conversation", async_handle_get_conversation, schema=GET_CONVERSATION_SCHEMA
+    )
     hass.services.async_register(
         DOMAIN, "get_conversations", async_handle_get_conversations, schema=GET_CONVERSATIONS_SCHEMA
     )
@@ -2194,6 +2249,8 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # Remove Prompt Compaction services
     hass.services.async_remove(DOMAIN, "get_compaction_status")
     # Remove Chat History services
+    hass.services.async_remove(DOMAIN, "save_conversation")
+    hass.services.async_remove(DOMAIN, "get_conversation")
     hass.services.async_remove(DOMAIN, "get_conversations")
     hass.services.async_remove(DOMAIN, "delete_conversation")
     hass.services.async_remove(DOMAIN, "rename_conversation")
