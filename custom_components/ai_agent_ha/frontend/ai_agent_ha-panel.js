@@ -1581,10 +1581,12 @@ class AiAgentHaPanel extends LitElement {
     if (this._showPredefinedPrompts) {
       this._selectedPrompts = this._getRandomPrompts();
     }
+    this.requestUpdate();
   }
 
   _togglePromptHistory() {
     this._showPromptHistory = !this._showPromptHistory;
+    this.requestUpdate();
   }
 
   _usePrompt(prompt) {
@@ -1993,13 +1995,14 @@ class AiAgentHaPanel extends LitElement {
   }
   
   /**
-   * Toggle the history sidebar visibility
-   */
+    * Toggle the history sidebar visibility
+    */
   _toggleHistorySidebar() {
     this._showHistorySidebar = !this._showHistorySidebar;
     if (this._showHistorySidebar) {
       this._loadConversations();
     }
+    this.requestUpdate();
   }
 
   _scrollToBottom() {
