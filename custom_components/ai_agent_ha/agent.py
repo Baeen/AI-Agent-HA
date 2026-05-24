@@ -2205,8 +2205,24 @@ class AiAgentHaAgent:
             return [{"error": f"Error getting entities for area {area_id}: {str(e)}"}]
 
     async def get_entities(self, area_id=None, area_ids=None) -> List[Dict[str, Any]]:
-        """Get entities by area(s) - flexible method that supports single area or multiple areas."""
+        """Get entities by area(s) - flexible method that supports single area or multiple areas.
+        
+        If no area is specified, returns ALL entities in the system.
+        """
         try:
+            # If no area specified, return all entities
+            if not area_id and not area_ids:
+                _LOGGER.debug("No area specified, returning all entities")
+                return [
+                    {
+                        "entity_id": state.entity_id,
+                        "state": state.state,
+                        "attributes": state.attributes,
+                        "domain": state.entity_id.split(".")[0],
+                    }
+                    for state in self.hass.states.async_all()
+                ]
+            
             # Handle different parameter formats
             areas_to_process = []
 
