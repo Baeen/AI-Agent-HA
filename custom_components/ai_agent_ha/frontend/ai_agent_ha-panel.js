@@ -354,6 +354,10 @@ class AiAgentHaPanel extends LitElement {
         border-radius: 4px;
         margin: 8px 0;
         font-size: 0.95em;
+        color: #2e7d32 !important;
+      }
+      .action-report .message-content {
+        color: #1b5e20 !important;
       }
       .action-report br:last-child {
         display: none;
@@ -2102,7 +2106,9 @@ class AiAgentHaPanel extends LitElement {
     // For action report messages, use special styling
     if (message.isActionReport) {
       return html`
-        <div class="message-content action-report">${message.text.replace(/\n/g, html`<br>`)}</div>
+        <div class="action-report">
+          <div class="message-content">${message.text.replace(/\n/g, html`<br>`)}</div>
+        </div>
         ${message.timestamp ? html`
           <div class="response-meta">
             <span>${this._formatRelativeTime(message.timestamp)}</span>
