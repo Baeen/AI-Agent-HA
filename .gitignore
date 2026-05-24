@@ -82,3 +82,10 @@ temp/
 .mypy_cache/
 .dmypy.json
 dmypy.json
+
+# Reference files (Home Assistant core, etc.)
+reference/
+!.gitkeep
+
+# Local misc files
+misc/
