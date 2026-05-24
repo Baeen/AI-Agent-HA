@@ -15,6 +15,7 @@ from homeassistant.helpers.typing import ConfigType
 
 from .agent import AiAgentHaAgent
 from .const import DOMAIN
+from .chat_history import ChatHistoryManager
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -321,6 +322,48 @@ SEARCH_INTEGRATIONS_SCHEMA = vol.Schema(
     }
 )
 
+# Chat History schemas
+GET_CONVERSATIONS_SCHEMA = vol.Schema({})
+DELETE_CONVERSATION_SCHEMA = vol.Schema(
+    {
+        vol.Required("conversation_id"): cv.string,
+    }
+)
+RENAME_CONVERSATION_SCHEMA = vol.Schema(
+    {
+        vol.Required("conversation_id"): cv.string,
+        vol.Required("name"): cv.string,
+    }
+)
+EXPORT_CONVERSATION_SCHEMA = vol.Schema(
+    {
+        vol.Required("conversation_id"): cv.string,
+    }
+)
+SEARCH_CONVERSATIONS_SCHEMA = vol.Schema(
+    {
+        vol.Required("query"): cv.string,
+    }
+)
+CLEAR_OLD_CONVERSATIONS_SCHEMA = vol.Schema(
+    {
+        vol.Optional("days_threshold", default=30): vol.All(
+            vol.Coerce(int), vol.Range(min=1, max=365)
+        ),
+    }
+)
+PIN_CONVERSATION_SCHEMA = vol.Schema(
+    {
+        vol.Required("conversation_id"): cv.string,
+    }
+)
+ADD_TAG_SCHEMA = vol.Schema(
+    {
+        vol.Required("conversation_id"): cv.string,
+        vol.Required("tag"): cv.string,
+    }
+)
+
 
 async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Migrate old config entries to new version."""
@@ -405,6 +448,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         )
         hass.data[DOMAIN]["agents"][provider] = AiAgentHaAgent(hass, config_data)
 
+        # Initialize chat history manager
+        if "chat_history_manager" not in hass.data[DOMAIN]:
+            hass.data[DOMAIN]["chat_history_manager"] = ChatHistoryManager(hass)
+
         _LOGGER.info("Successfully set up AI Agent HA for provider: %s", provider)
 
     except KeyError as err:
@@ -440,10 +487,28 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 _LOGGER.debug(f"Using fallback provider: {provider}")
 
             agent = hass.data[DOMAIN]["agents"][provider]
+            
+            # Process images if provided
+            images = None
+            image_mime_types = None
+            if call.data.get("images"):
+                import base64
+                images = []
+                image_mime_types = call.data.get("mime_types", ["image/jpeg"] * len(call.data["images"]))
+                for i, img_data in enumerate(call.data["images"]):
+                    try:
+                        decoded = base64.b64decode(img_data)
+                        images.append(decoded)
+                    except Exception as e:
+                        _LOGGER.error(f"Invalid base64 image data at index {i}: {e}")
+                        return _with_debug({"success": False, "error": f"Invalid image data: {str(e)}"})
+            
             result = await agent.process_query(
                 call.data.get("prompt", ""),
                 provider=provider,
                 debug=call.data.get("debug", False),
+                images=images,
+                image_mime_types=image_mime_types,
             )
             hass.bus.async_fire("ai_agent_ha_response", result)
         except Exception as e:
@@ -621,6 +686,20 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     # Register services
     hass.services.async_register(DOMAIN, "query", async_handle_query)
+    
+    # Schema for multimodal query service (with images)
+    MULTIMODAL_QUERY_SCHEMA = vol.Schema({
+        vol.Required("prompt"): cv.string,
+        vol.Optional("images"): [cv.string],  # Base64 encoded images
+        vol.Optional("mime_types"): [cv.string],  # MIME types of images
+        vol.Optional("provider"): cv.string,
+        vol.Optional("debug", default=False): cv.boolean,
+    })
+    
+    hass.services.async_register(
+        DOMAIN, "multimodal_query", async_handle_query, schema=MULTIMODAL_QUERY_SCHEMA
+    )
+    
     hass.services.async_register(
         DOMAIN, "create_automation", async_handle_create_automation
     )
@@ -1716,6 +1795,302 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         SEARCH_INTEGRATIONS_SCHEMA,
     )
 
+    # Prompt Compaction status service
+    COMPACTION_STATUS_SCHEMA = vol.Schema({})
+
+    async def async_handle_get_compaction_status(call):
+        """Handle the get_compaction_status service call."""
+        try:
+            provider = call.data.get("provider")
+            if provider and provider in hass.data[DOMAIN]["agents"]:
+                agent = hass.data[DOMAIN]["agents"][provider]
+            elif "agents" in hass.data[DOMAIN]:
+                # If no specific provider, get the first available agent
+                agent = next(iter(hass.data[DOMAIN]["agents"].values()), None)
+            else:
+                return {"error": "No AI agent configured"}
+            
+            if agent is None:
+                return {"error": "No AI agent available"}
+            
+            # Get compaction statistics
+            compaction_stats = agent.prompt_compactor.get_compaction_stats()
+            
+            # Get current token estimate
+            current_tokens = agent.prompt_compactor.estimate_messages_tokens(
+                agent.conversation_history
+            )
+            max_tokens = agent._get_max_tokens_for_provider(
+                agent.config.get("ai_provider", "openai")
+            )
+            
+            return {
+                "current_tokens": current_tokens,
+                "max_tokens": max_tokens,
+                "threshold": agent.prompt_compactor.threshold_pct,
+                "compaction_enabled": agent.prompt_compactor.enabled,
+                "compaction_stats": compaction_stats,
+            }
+        except Exception as e:
+            _LOGGER.error(f"Error getting compaction status: {e}")
+            return {"error": str(e)}
+
+    hass.services.async_register(
+        DOMAIN,
+        "get_compaction_status",
+        async_handle_get_compaction_status,
+        COMPACTION_STATUS_SCHEMA,
+    )
+
+    # Chat History services
+    async def async_handle_get_conversations(call):
+        """Get list of all saved conversations."""
+        try:
+            manager = hass.data[DOMAIN].get("chat_history_manager")
+            if not manager:
+                return {"success": False, "error": "Chat history manager not initialized"}
+            
+            conversations = await manager.load_conversations()
+            return {
+                "success": True,
+                "conversations": [
+                    {
+                        "conversation_id": c.conversation_id,
+                        "name": c.name,
+                        "created_at": c.created_at,
+                        "updated_at": c.updated_at,
+                        "message_count": c.message_count,
+                        "preview": c.preview,
+                        "tags": c.tags,
+                        "is_pinned": c.is_pinned,
+                    }
+                    for c in conversations
+                ],
+            }
+        except Exception as e:
+            _LOGGER.error("Error getting conversations: %s", str(e))
+            return {"success": False, "error": str(e)}
+
+    async def async_handle_delete_conversation(call):
+        """Delete a specific conversation."""
+        try:
+            manager = hass.data[DOMAIN].get("chat_history_manager")
+            if not manager:
+                return {"success": False, "error": "Chat history manager not initialized"}
+            
+            success = await manager.delete_conversation(call.data["conversation_id"])
+            return {"success": success}
+        except Exception as e:
+            _LOGGER.error("Error deleting conversation: %s", str(e))
+            return {"success": False, "error": str(e)}
+
+    async def async_handle_rename_conversation(call):
+        """Rename a conversation."""
+        try:
+            manager = hass.data[DOMAIN].get("chat_history_manager")
+            if not manager:
+                return {"success": False, "error": "Chat history manager not initialized"}
+            
+            success = await manager.rename_conversation(
+                call.data["conversation_id"],
+                call.data["name"],
+            )
+            return {"success": success}
+        except Exception as e:
+            _LOGGER.error("Error renaming conversation: %s", str(e))
+            return {"success": False, "error": str(e)}
+
+    async def async_handle_export_conversation(call):
+        """Export a conversation to JSON."""
+        try:
+            manager = hass.data[DOMAIN].get("chat_history_manager")
+            if not manager:
+                return {"success": False, "error": "Chat history manager not initialized"}
+            
+            export_data = await manager.export_conversation(call.data["conversation_id"])
+            return {"success": True, "data": export_data}
+        except Exception as e:
+            _LOGGER.error("Error exporting conversation: %s", str(e))
+            return {"success": False, "error": str(e)}
+
+    async def async_handle_search_conversations(call):
+        """Search conversations by query."""
+        try:
+            manager = hass.data[DOMAIN].get("chat_history_manager")
+            if not manager:
+                return {"success": False, "error": "Chat history manager not initialized"}
+            
+            conversations = await manager.search_conversations(call.data["query"])
+            return {
+                "success": True,
+                "conversations": [
+                    {
+                        "conversation_id": c.conversation_id,
+                        "name": c.name,
+                        "preview": c.preview,
+                        "tags": c.tags,
+                    }
+                    for c in conversations
+                ],
+            }
+        except Exception as e:
+            _LOGGER.error("Error searching conversations: %s", str(e))
+            return {"success": False, "error": str(e)}
+
+    async def async_handle_clear_old_conversations(call):
+        """Clear conversations older than threshold."""
+        try:
+            manager = hass.data[DOMAIN].get("chat_history_manager")
+            if not manager:
+                return {"success": False, "error": "Chat history manager not initialized"}
+            
+            days = call.data.get("days_threshold", 30)
+            count = await manager.clear_old_conversations(days)
+            return {"success": True, "deleted_count": count}
+        except Exception as e:
+            _LOGGER.error("Error clearing old conversations: %s", str(e))
+            return {"success": False, "error": str(e)}
+
+    async def async_handle_pin_conversation(call):
+        """Pin a conversation."""
+        try:
+            manager = hass.data[DOMAIN].get("chat_history_manager")
+            if not manager:
+                return {"success": False, "error": "Chat history manager not initialized"}
+            
+            success = await manager.pin_conversation(call.data["conversation_id"])
+            return {"success": success}
+        except Exception as e:
+            _LOGGER.error("Error pinning conversation: %s", str(e))
+            return {"success": False, "error": str(e)}
+
+    async def async_handle_add_tag(call):
+        """Add a tag to a conversation."""
+        try:
+            manager = hass.data[DOMAIN].get("chat_history_manager")
+            if not manager:
+                return {"success": False, "error": "Chat history manager not initialized"}
+            
+            success = await manager.add_tag(
+                call.data["conversation_id"],
+                call.data["tag"],
+            )
+            return {"success": success}
+        except Exception as e:
+            _LOGGER.error("Error adding tag: %s", str(e))
+            return {"success": False, "error": str(e)}
+
+    # Register chat history services
+    hass.services.async_register(
+        DOMAIN, "get_conversations", async_handle_get_conversations, schema=GET_CONVERSATIONS_SCHEMA
+    )
+    hass.services.async_register(
+        DOMAIN, "delete_conversation", async_handle_delete_conversation, schema=DELETE_CONVERSATION_SCHEMA
+    )
+    hass.services.async_register(
+        DOMAIN, "rename_conversation", async_handle_rename_conversation, schema=RENAME_CONVERSATION_SCHEMA
+    )
+    hass.services.async_register(
+        DOMAIN, "export_conversation", async_handle_export_conversation, schema=EXPORT_CONVERSATION_SCHEMA
+    )
+    hass.services.async_register(
+        DOMAIN, "search_conversations", async_handle_search_conversations, schema=SEARCH_CONVERSATIONS_SCHEMA
+    )
+    hass.services.async_register(
+        DOMAIN, "clear_old_conversations", async_handle_clear_old_conversations, schema=CLEAR_OLD_CONVERSATIONS_SCHEMA
+    )
+    hass.services.async_register(
+        DOMAIN, "pin_conversation", async_handle_pin_conversation, schema=PIN_CONVERSATION_SCHEMA
+    )
+    hass.services.async_register(
+        DOMAIN, "add_tag", async_handle_add_tag, schema=ADD_TAG_SCHEMA
+    )
+
+    # Permission System schemas
+    APPROVE_PERMISSION_SCHEMA = vol.Schema({
+        vol.Required("request_id"): str,
+    })
+
+    DENY_PERMISSION_SCHEMA = vol.Schema({
+        vol.Required("request_id"): str,
+    })
+
+    GET_PENDING_PERMISSIONS_SCHEMA = vol.Schema({})
+
+    # Permission System services
+    async def async_handle_approve_permission(call):
+        """Approve a pending permission request."""
+        try:
+            agent = hass.data[DOMAIN]["agents"].get("default")
+            if not agent:
+                # Try to get any available agent
+                agents = hass.data[DOMAIN].get("agents", {})
+                if agents:
+                    agent = list(agents.values())[0]
+                else:
+                    return {"success": False, "error": "No agent available"}
+            
+            success = agent.permission_checker.approve_request(call.data["request_id"])
+            return {"success": success, "request_id": call.data["request_id"]}
+        except Exception as e:
+            _LOGGER.error("Error approving permission: %s", str(e))
+            return {"success": False, "error": str(e)}
+
+    async def async_handle_deny_permission(call):
+        """Deny a pending permission request."""
+        try:
+            agent = hass.data[DOMAIN]["agents"].get("default")
+            if not agent:
+                # Try to get any available agent
+                agents = hass.data[DOMAIN].get("agents", {})
+                if agents:
+                    agent = list(agents.values())[0]
+                else:
+                    return {"success": False, "error": "No agent available"}
+            
+            success = agent.permission_checker.deny_request(call.data["request_id"])
+            return {"success": success, "request_id": call.data["request_id"]}
+        except Exception as e:
+            _LOGGER.error("Error denying permission: %s", str(e))
+            return {"success": False, "error": str(e)}
+
+    async def async_handle_get_pending_permissions(call):
+        """Get all pending permission requests."""
+        try:
+            agent = hass.data[DOMAIN]["agents"].get("default")
+            if not agent:
+                # Try to get any available agent
+                agents = hass.data[DOMAIN].get("agents", {})
+                if agents:
+                    agent = list(agents.values())[0]
+                else:
+                    return {"success": False, "error": "No agent available"}
+            
+            requests = agent.permission_checker.get_pending_requests()
+            return {
+                "success": True,
+                "requests": [
+                    {
+                        "request_id": r.request_id,
+                        "action": r.action,
+                        "target_entities": r.target_entities,
+                        "reason": r.reason,
+                        "risk_level": r.risk_level,
+                        "risk_description": agent.permission_checker.get_risk_description(r.risk_level),
+                        "timestamp": r.timestamp,
+                        "expires_at": r.expires_at,
+                    }
+                    for r in requests
+                ]
+            }
+        except Exception as e:
+            _LOGGER.error("Error getting pending permissions: %s", str(e))
+            return {"success": False, "error": str(e)}
+
+    hass.services.async_register(DOMAIN, "approve_permission", async_handle_approve_permission, schema=APPROVE_PERMISSION_SCHEMA)
+    hass.services.async_register(DOMAIN, "deny_permission", async_handle_deny_permission, schema=DENY_PERMISSION_SCHEMA)
+    hass.services.async_register(DOMAIN, "get_pending_permissions", async_handle_get_pending_permissions, schema=GET_PENDING_PERMISSIONS_SCHEMA)
+
     # Register static path for frontend
     await hass.http.async_register_static_paths(
         [
@@ -1816,6 +2191,20 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.services.async_remove(DOMAIN, "get_integration_guide")
     hass.services.async_remove(DOMAIN, "get_config_snippet")
     hass.services.async_remove(DOMAIN, "search_integrations")
+    # Remove Prompt Compaction services
+    hass.services.async_remove(DOMAIN, "get_compaction_status")
+    # Remove Chat History services
+    hass.services.async_remove(DOMAIN, "get_conversations")
+    hass.services.async_remove(DOMAIN, "delete_conversation")
+    hass.services.async_remove(DOMAIN, "rename_conversation")
+    hass.services.async_remove(DOMAIN, "export_conversation")
+    hass.services.async_remove(DOMAIN, "search_conversations")
+    hass.services.async_remove(DOMAIN, "clear_old_conversations")
+    hass.services.async_remove(DOMAIN, "pin_conversation")
+    hass.services.async_remove(DOMAIN, "add_tag")
+    hass.services.async_remove(DOMAIN, "approve_permission")
+    hass.services.async_remove(DOMAIN, "deny_permission")
+    hass.services.async_remove(DOMAIN, "get_pending_permissions")
     # Remove data
     if DOMAIN in hass.data:
         hass.data.pop(DOMAIN)

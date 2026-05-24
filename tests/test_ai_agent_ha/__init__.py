@@ -1,1 +1,1 @@
-"""Tests for the AI Agent HA integration."""
+"""Tests for ai_agent_ha integration."""

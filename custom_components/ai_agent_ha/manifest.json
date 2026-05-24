@@ -7,7 +7,8 @@
         "lovelace"
     ],
     "codeowners": [
-        "@sbenodiz"
+        "@sbenodiz",
+        "@Baeen"
     ],
     "config_flow": true,
     "dependencies": [

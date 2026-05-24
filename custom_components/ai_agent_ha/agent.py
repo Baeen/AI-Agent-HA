@@ -40,8 +40,35 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
-from .const import CONF_OPENAI_BASE_URL, CONF_WEATHER_ENTITY, DOMAIN
+from .const import (
+    CONF_OPENAI_BASE_URL,
+    CONF_WEATHER_ENTITY,
+    DOMAIN,
+    CONF_PROMPT_COMPACTION_THRESHOLD,
+    DEFAULT_PROMPT_COMPACTION_ENABLED,
+    CONF_PERMISSION_MODE,
+    CONF_PERMISSION_TIMEOUT,
+    CONF_PERMISSION_WHITELIST,
+    CONF_PERMISSION_BLACKLIST,
+    DEFAULT_PERMISSION_MODE,
+    DEFAULT_PERMISSION_TIMEOUT,
+    # Multimedia settings
+    CONF_MULTIMODAL_ENABLED,
+    CONF_IMAGE_UPLOAD_ENABLED,
+    CONF_MAX_IMAGE_SIZE,
+    CONF_MAX_IMAGES_PER_MESSAGE,
+    CONF_IMAGE_COMPRESSION_QUALITY,
+)
 from .yaml_review import YAMLReviewer
+from .permissions import (
+    PermissionChecker,
+    PermissionRule,
+    PermissionRequest,
+    PERMIT,
+    DENY,
+    PROMPT,
+    PERMISSION_MODE_PROMPT,
+)
 from .ha_documentation import HADocumentationProvider
 from .log_analyzer import LogAnalyzer
 from .error_diagnosis import ErrorDiagnosisAssistant
@@ -54,6 +81,9 @@ from .security_audit import SecurityAuditor
 from .nl_to_automation import NLToAutomationConverter
 from .dashboard_advisor import DashboardAdvisor
 from .integration_guide import IntegrationGuideProvider
+from .prompt_compactor import PromptCompactor, ConversationSummary
+from .chat_history import ChatHistoryManager
+from .multimedia import MultimediaProcessor, ImageAttachment
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -1545,6 +1575,66 @@ class AiAgentHaAgent:
 
         # Initialize dashboard advisor
         self.dashboard_advisor = DashboardAdvisor()
+
+        # Initialize prompt compactor
+        self.prompt_compactor = PromptCompactor(
+            threshold_pct=config.get(CONF_PROMPT_COMPACTION_THRESHOLD, DEFAULT_PROMPT_COMPACTION_ENABLED),
+            enabled=True,
+        )
+
+        # Initialize multimedia processor for multimodal support
+        self.multimodal_enabled = config.get(
+            CONF_MULTIMODAL_ENABLED,
+            True
+        )
+        self.image_upload_enabled = config.get(
+            CONF_IMAGE_UPLOAD_ENABLED,
+            True
+        )
+
+        self.multimedia_processor = MultimediaProcessor(
+            max_image_size=config.get(CONF_MAX_IMAGE_SIZE, 5 * 1024 * 1024),
+            max_images_per_message=config.get(CONF_MAX_IMAGES_PER_MESSAGE, 3),
+            compression_quality=config.get(CONF_IMAGE_COMPRESSION_QUALITY, 80)
+        )
+
+        # Track attached images for current message
+        self._current_image_attachments: List[ImageAttachment] = []
+
+        # Initialize permission checker
+        from .const import (
+            CONF_PERMISSION_MODE,
+            CONF_PERMISSION_TIMEOUT,
+            CONF_PERMISSION_WHITELIST,
+            CONF_PERMISSION_BLACKLIST,
+        )
+
+        whitelist_rules = []
+        if CONF_PERMISSION_WHITELIST in config:
+            for item in config[CONF_PERMISSION_WHITELIST]:
+                whitelist_rules.append(PermissionRule(
+                    pattern=item.get("pattern", ""),
+                    rule_type=item.get("type", "allow"),
+                    description=item.get("description", ""),
+                    priority=item.get("priority", 0)
+                ))
+
+        blacklist_rules = []
+        if CONF_PERMISSION_BLACKLIST in config:
+            for item in config[CONF_PERMISSION_BLACKLIST]:
+                blacklist_rules.append(PermissionRule(
+                    pattern=item.get("pattern", ""),
+                    rule_type=item.get("type", "deny"),
+                    description=item.get("description", ""),
+                    priority=item.get("priority", 0)
+                ))
+
+        self.permission_checker = PermissionChecker(
+            mode=config.get(CONF_PERMISSION_MODE, PERMISSION_MODE_PROMPT),
+            whitelist=whitelist_rules,
+            blacklist=blacklist_rules,
+            timeout=config.get(CONF_PERMISSION_TIMEOUT, 60)
+        )
 
         _LOGGER.debug(
             "AiAgentHaAgent initialized successfully with provider: %s, model: %s",
@@ -3106,9 +3196,22 @@ Then restart Home Assistant to see your new dashboard in the sidebar."""
             return {"error": f"Error suggesting dashboard layout: {str(e)}"}
 
     async def process_query(
-        self, user_query: str, provider: Optional[str] = None, debug: bool = False
+        self,
+        user_query: str,
+        provider: Optional[str] = None,
+        debug: bool = False,
+        images: Optional[List[bytes]] = None,
+        image_mime_types: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
-        """Process a user query with input validation and rate limiting."""
+        """Process a user query with input validation and rate limiting.
+
+        Args:
+            user_query: The user's text query
+            provider: Optional AI provider override
+            debug: Whether to include debug information
+            images: Optional list of raw image bytes for multimodal processing
+            image_mime_types: Optional list of MIME types for the images
+        """
         try:
             if not user_query or not isinstance(user_query, str):
                 return {"success": False, "error": "Invalid query format"}
@@ -3127,6 +3230,37 @@ Then restart Home Assistant to see your new dashboard in the sidebar."""
 
             selected_provider = provider or config.get("ai_provider", "llama")
             models_config = config.get("models", {})
+
+            # Process images if provided and multimodal is enabled
+            image_attachments = []
+            if (
+                images
+                and self.multimodal_enabled
+                and self.image_upload_enabled
+            ):
+                for i, img_data in enumerate(images):
+                    mime_type = (
+                        image_mime_types[i]
+                        if image_mime_types and i < len(image_mime_types)
+                        else "image/jpeg"
+                    )
+
+                    result = await self.multimedia_processor.process_image_upload(
+                        img_data, mime_type
+                    )
+                    if result["success"]:
+                        image_attachments.append(result["image"])
+                    else:
+                        return _with_debug(
+                            {
+                                "success": False,
+                                "error": f"Image {i+1} processing failed: {result['error']}",
+                            }
+                        )
+
+            _LOGGER.debug(
+                "Processed %d image attachments for query", len(image_attachments)
+            )
 
             provider_config = {
                 "openai": {
@@ -3290,9 +3424,13 @@ Then restart Home Assistant to see your new dashboard in the sidebar."""
                 _LOGGER.debug(f"Processing iteration {iteration} of {max_iterations}")
 
                 try:
-                    # Get AI response
+                    # Get AI response (use multimodal method if images are present)
                     _LOGGER.debug("Requesting response from AI provider")
-                    response = await self._get_ai_response()
+                    if image_attachments:
+                        _LOGGER.debug("Using multimodal AI response with %d images", len(image_attachments))
+                        response = await self._get_ai_response_with_images(user_query, image_attachments)
+                    else:
+                        response = await self._get_ai_response()
                     _LOGGER.debug("Received response from AI provider: %s", response)
 
                     try:
@@ -3584,6 +3722,71 @@ Then restart Home Assistant to see your new dashboard in the sidebar."""
                             }
                             result = _with_debug(result)
                             self._set_cached_data(cache_key, result)
+                            
+                            # Auto-save conversation to chat history
+                            try:
+                                import uuid
+                                
+                                # Get chat history manager from hass.data
+                                chat_manager = self.hass.data.get(DOMAIN, {}).get("chat_history_manager")
+                                if chat_manager:
+                                    # Generate or use existing conversation ID
+                                    if not hasattr(self, '_current_conversation_id'):
+                                        self._current_conversation_id = f"conv_{uuid.uuid4().hex[:12]}"
+                                    
+                                    # Build messages list for storage
+                                    messages_to_save = []
+                                    for msg in self.conversation_history:
+                                        content = msg.get("content", "")
+                                        role = msg.get("role", "unknown")
+                                        # Map role to type for storage
+                                        if role == "system":
+                                            continue  # Skip system messages
+                                        elif role == "user":
+                                            msg_type = "user"
+                                        elif role == "assistant":
+                                            msg_type = "assistant"
+                                        else:
+                                            msg_type = "unknown"
+                                        
+                                        # Try to parse JSON content for cleaner storage
+                                        text = content
+                                        if content.startswith("{"):
+                                            try:
+                                                parsed = json.loads(content)
+                                                if isinstance(parsed, dict) and "response" in parsed:
+                                                    text = parsed["response"]
+                                                elif isinstance(parsed, dict) and "answer" in parsed:
+                                                    text = parsed["answer"]
+                                            except (json.JSONDecodeError, ValueError):
+                                                pass
+                                        
+                                        messages_to_save.append({
+                                            "type": msg_type,
+                                            "text": text,
+                                        })
+                                    
+                                    # Auto-generate name from first user message
+                                    auto_name = "Conversation"
+                                    for msg in self.conversation_history:
+                                        if msg.get("role") == "user":
+                                            preview = msg.get("content", "")[:50]
+                                            auto_name = f'"{preview}{"..." if len(preview) >= 50 else ""}"'
+                                            break
+                                    
+                                    await chat_manager.save_conversation(
+                                        self._current_conversation_id,
+                                        messages_to_save,
+                                        auto_name,
+                                    )
+                                    _LOGGER.debug(
+                                        "Auto-saved conversation %s with %d messages",
+                                        self._current_conversation_id,
+                                        len(messages_to_save),
+                                    )
+                            except Exception as e:
+                                _LOGGER.debug("Failed to auto-save conversation: %s", str(e))
+                            
                             return result
                         elif (
                             response_data.get("request_type") == "automation_suggestion"
@@ -3801,6 +4004,47 @@ Then restart Home Assistant to see your new dashboard in the sidebar."""
                                 }
                             )
 
+                            # Check permissions before executing service call
+                            action = f"{domain}.{service}"
+                            entities = target.get("entity_id", [])
+                            if isinstance(entities, str):
+                                entities = [entities]
+                            if not isinstance(entities, list):
+                                entities = []
+
+                            # Check permission
+                            permission_result = self.permission_checker.check_action(action, entities)
+
+                            if permission_result == DENY:
+                                _LOGGER.warning("Permission denied for action: %s", action)
+                                return _with_debug({
+                                    "success": False,
+                                    "error": f"Permission denied for action '{action}'. This action is blacklisted.",
+                                    "permission_denied": True,
+                                    "action": action,
+                                })
+                            elif permission_result == PROMPT:
+                                # Create permission request
+                                request = self.permission_checker.create_permission_request(
+                                    action=action,
+                                    entities=entities,
+                                    reason="AI agent requested this service call"
+                                )
+                                # Return permission request instead of executing
+                                return _with_debug({
+                                    "success": True,
+                                    "permission_request": {
+                                        "request_id": request.request_id,
+                                        "action": action,
+                                        "target_entities": entities,
+                                        "reason": request.reason,
+                                        "risk_level": request.risk_level,
+                                        "risk_description": self.permission_checker.get_risk_description(request.risk_level),
+                                        "expires_at": request.expires_at,
+                                    },
+                                    "request_type": "permission_request",
+                                })
+
                             # Call the service
                             data = await self.call_service(
                                 domain, service, target, service_data
@@ -3996,6 +4240,28 @@ Then restart Home Assistant to see your new dashboard in the sidebar."""
                 {"success": False, "error": f"Error in process_query: {str(e)}"}
             )
 
+    def _get_max_tokens_for_provider(self, provider: str) -> int:
+        """Get maximum context tokens for the current provider/model.
+        
+        Args:
+            provider: The AI provider name.
+            
+        Returns:
+            Maximum context tokens for the provider.
+        """
+        MAX_TOKENS = {
+            "openai": 128000,  # GPT-4 Turbo
+            "gemini": 128000,  # Gemini models
+            "anthropic": 200000,  # Claude 3
+            "openrouter": 128000,
+            "llama": 32768,  # Default Llama
+            "local_ollama": 32768,  # Default for local models
+            "openai_compatible": 131072,  # Default OpenAI-compatible
+            "alter": 8192,
+            "zai": 8192,
+        }
+        return MAX_TOKENS.get(provider, 32768)
+
     def _build_debug_trace(
         self,
         provider: Optional[str],
@@ -4019,7 +4285,7 @@ Then restart Home Assistant to see your new dashboard in the sidebar."""
             raise Exception("Rate limit exceeded. Please try again later.")
         retry_count = 0
         last_error = None
-        # Limit conversation history to last 10 messages to prevent token overflow
+        # Limit conversation history to prevent token overflow
         recent_messages = (
             self.conversation_history[-10:]
             if len(self.conversation_history) > 10
@@ -4028,6 +4294,42 @@ Then restart Home Assistant to see your new dashboard in the sidebar."""
         # Ensure system prompt is always the first message
         if not recent_messages or recent_messages[0].get("role") != "system":
             recent_messages = [self.system_prompt] + recent_messages
+
+        # --- Prompt Compaction Check ---
+        # Get max tokens for the current provider
+        current_provider = self.config.get("ai_provider", "openai")
+        max_tokens = self._get_max_tokens_for_provider(current_provider)
+        
+        # Estimate token count and check if compaction is needed
+        estimated_tokens = self.prompt_compactor.estimate_messages_tokens(recent_messages)
+        
+        if self.prompt_compactor.should_compact(estimated_tokens, max_tokens):
+            _LOGGER.warning(
+                "Context window at %d/%d tokens (threshold %.0f%%). Compacting conversation...",
+                estimated_tokens,
+                max_tokens,
+                self.prompt_compactor.threshold_pct * 100,
+            )
+            try:
+                recent_messages, summary = await self.prompt_compactor.compact_conversation(
+                    recent_messages, max_tokens, ai_client=self.ai_client
+                )
+                if summary:
+                    _LOGGER.info(
+                        "Compacted %d messages into summary of %d tokens",
+                        summary.original_message_count,
+                        summary.summary_token_count,
+                    )
+            except Exception as e:
+                _LOGGER.warning(
+                    "Prompt compaction failed, proceeding with full context: %s", e
+                )
+        else:
+            _LOGGER.debug(
+                "Context window at %d/%d tokens - no compaction needed",
+                estimated_tokens,
+                max_tokens,
+            )
 
         _LOGGER.debug("Sending %d messages to AI provider", len(recent_messages))
         _LOGGER.debug("AI provider: %s", self.config.get("ai_provider", "unknown"))
@@ -4085,6 +4387,114 @@ Then restart Home Assistant to see your new dashboard in the sidebar."""
                 if retry_count < self._max_retries:
                     await asyncio.sleep(self._retry_delay * retry_count)
                 continue
+        raise Exception(
+            f"Failed after {retry_count} retries. Last error: {str(last_error)}"
+        )
+
+    def _build_messages_with_images(
+        self,
+        user_query: str,
+        images: List[ImageAttachment],
+        is_current_message: bool = True,
+    ) -> List[Dict]:
+        """Build messages array with multimodal content for AI models.
+
+        Args:
+            user_query: The user's text query
+            images: List of ImageAttachment objects
+            is_current_message: Whether this is the current user message
+
+        Returns:
+            Messages array compatible with OpenAI, Anthropic, etc. APIs
+        """
+        # Start with system prompt
+        messages = []
+        if self.system_prompt:
+            messages.append({
+                "role": "system",
+                "content": self.system_prompt.get("content", "") if isinstance(self.system_prompt, dict) else str(self.system_prompt)
+            })
+
+        # Add conversation history
+        for msg in self.conversation_history:
+            if is_current_message and msg == self.conversation_history[-1]:
+                # This is the current message with images
+                content = MultimediaProcessor.format_multimodal_message(user_query, images)
+                messages.append({
+                    "role": "user",
+                    "content": content
+                })
+            else:
+                messages.append({
+                    "role": msg.get("role", "user"),
+                    "content": msg.get("content", "")
+                })
+
+        return messages
+
+    async def _get_ai_response_with_images(
+        self,
+        user_query: str,
+        images: List[ImageAttachment],
+    ) -> str:
+        """Get AI response with image attachments for multimodal models.
+
+        Args:
+            user_query: The user's text query
+            images: List of processed ImageAttachment objects
+
+        Returns:
+            The AI's response text
+        """
+        # Build messages with multimodal content
+        messages = self._build_messages_with_images(user_query, images)
+
+        # Check rate limit
+        if not self._check_rate_limit():
+            raise Exception("Rate limit exceeded. Please try again later.")
+
+        retry_count = 0
+        last_error = None
+
+        _LOGGER.debug("Sending %d multimodal messages to AI provider", len(messages))
+
+        while retry_count < self._max_retries:
+            try:
+                _LOGGER.debug(
+                    "Attempt %d/%d: Calling AI client for multimodal response",
+                    retry_count + 1,
+                    self._max_retries,
+                )
+                response = await self.ai_client.get_response(messages)
+                _LOGGER.debug(
+                    "AI client returned multimodal response of length: %d", len(response or "")
+                )
+
+                # Check for empty response
+                if not response or response.strip() == "":
+                    _LOGGER.warning(
+                        "AI client returned empty multimodal response on attempt %d",
+                        retry_count + 1,
+                    )
+                    if retry_count + 1 >= self._max_retries:
+                        raise Exception(
+                            "AI provider returned empty response after all retries"
+                        )
+                    retry_count += 1
+                    await asyncio.sleep(self._retry_delay * retry_count)
+                    continue
+
+                return str(response)
+            except Exception as e:
+                _LOGGER.error(
+                    "AI client error on multimodal attempt %d: %s", retry_count + 1, str(e)
+                )
+                last_error = e
+                retry_count += 1
+                if retry_count < self._max_retries:
+                    await asyncio.sleep(self._retry_delay * retry_count)
+                continue
+
         raise Exception(
             f"Failed after {retry_count} retries. Last error: {str(last_error)}"
         )

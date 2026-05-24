@@ -25,6 +25,34 @@ query:
             - "zai"
             - "local"
 
+multimodal_query:
+  name: "Query AI Agent with Images (Multimodal)"
+  description: "Run a custom AI prompt with image attachments for multimodal AI models like GPT-4o, Gemini, etc."
+  fields:
+    prompt:
+      description: "The question or instruction to send to AI model along with images."
+      example: "What objects do you see in this image?"
+    images:
+      description: "Base64 encoded image data (array for multiple images)."
+      example: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJ..."
+    mime_types:
+      description: "MIME types of the images (if provided)."
+      example: "image/jpeg"
+    debug:
+      description: "Include a debug trace of the HA↔AI conversation (true/false)."
+      example: true
+      default: false
+    provider:
+      description: "The AI provider to use (must support multimodal input like gpt-4o, gemini-2.5-flash)"
+      example: "openai"
+      default: "openai"
+      selector:
+        select:
+          options:
+            - "openai"
+            - "gemini"
+            - "anthropic"
+
 create_dashboard:
   name: "Create Dashboard via AI Agent"
   description: "Create a new Home Assistant dashboard using AI assistance."
@@ -1164,3 +1192,115 @@ get_security_score:
             - "alter"
             - "zai"
             - "local"
+
+# Prompt Compaction status service
+get_compaction_status:
+  name: "Get Prompt Compaction Status"
+  description: "Get the current prompt compaction status and statistics for debugging."
+  fields:
+    provider:
+      description: "The AI provider to get status for (optional, defaults to first available)."
+      example: "openai"
+      default: "openai"
+      selector:
+        select:
+          options:
+            - "openai"
+            - "llama"
+            - "gemini"
+            - "openrouter"
+            - "anthropic"
+            - "alter"
+            - "zai"
+            - "local"
+
+# Chat History services
+get_conversations:
+  name: "Get Conversations"
+  description: "Get list of all saved conversations with metadata."
+
+delete_conversation:
+  name: "Delete Conversation"
+  description: "Delete a specific conversation by ID."
+  fields:
+    conversation_id:
+      description: "ID of the conversation to delete."
+      example: "conv_123456abcdef"
+
+rename_conversation:
+  name: "Rename Conversation"
+  description: "Rename a saved conversation."
+  fields:
+    conversation_id:
+      description: "ID of the conversation to rename."
+      example: "conv_123456abcdef"
+    name:
+      description: "New name for the conversation."
+      example: "Morning Routine Setup"
+
+export_conversation:
+  name: "Export Conversation"
+  description: "Export a conversation as JSON data."
+  fields:
+    conversation_id:
+      description: "ID of the conversation to export."
+      example: "conv_123456abcdef"
+
+search_conversations:
+  name: "Search Conversations"
+  description: "Search conversations by query string."
+  fields:
+    query:
+      description: "Search query to find conversations."
+      example: "morning routine"
+
+clear_old_conversations:
+  name: "Clear Old Conversations"
+  description: "Delete conversations older than the specified threshold."
+  fields:
+    days_threshold:
+      description: "Delete conversations older than this many days (1-365)."
+      example: 30
+      default: 30
+      selector:
+        number:
+          min: 1
+          max: 365
+          step: 1
+
+pin_conversation:
+  name: "Pin Conversation"
+  description: "Pin a conversation to keep it at the top of the list."
+  fields:
+    conversation_id:
+      description: "ID of the conversation to pin."
+      example: "conv_123456abcdef"
+
+add_tag:
+  name: "Add Tag"
+  description: "Add a tag to a conversation for organization."
+  fields:
+    conversation_id:
+      description: "ID of the conversation to tag."
+      example: "conv_123456abcdef"
+    tag:
+      description: "Tag to add."
+      example: "routines"
+
+# Permission System services
+approve_permission:
+  description: "Approve a pending permission request"
+  fields:
+    request_id:
+      description: "ID of the permission request to approve"
+      example: "perm_123_1705312800"
+
+deny_permission:
+  description: "Deny a pending permission request"
+  fields:
+    request_id:
+      description: "ID of the permission request to deny"
+      example: "perm_123_1705312800"
+
+get_pending_permissions:
+  description: "Get all pending permission requests"

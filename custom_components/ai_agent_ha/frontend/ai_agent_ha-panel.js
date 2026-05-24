@@ -4,6 +4,10 @@ import {
   css,
 } from "https://unpkg.com/lit-element@2.4.0/lit-element.js?module";
 
+// Markdown rendering libraries loaded from CDN
+import { marked } from 'https://cdn.jsdelivr.net/npm/marked@12.0.0/lib/marked.esm.js';
+import { DOMPurify } from 'https://cdn.jsdelivr.net/npm/dompurify@3.0.8/dist/purify.es.mjs';
+
 console.log("AI Agent HA Panel loading..."); // Debug log
 
 const PROVIDERS = {
@@ -38,7 +42,10 @@ class AiAgentHaPanel extends LitElement {
       _showProviderDropdown: { type: Boolean, reflect: false, attribute: false },
       _showThinking: { type: Boolean, reflect: false, attribute: false },
       _thinkingExpanded: { type: Boolean, reflect: false, attribute: false },
-      _debugInfo: { type: Object, reflect: false, attribute: false }
+      _debugInfo: { type: Object, reflect: false, attribute: false },
+      _attachedImages: { type: Array, reflect: false, attribute: false },
+      _imageUploadEnabled: { type: Boolean, reflect: false, attribute: false },
+      _maxImagesPerMessage: { type: Number, reflect: false, attribute: false },
     };
   }
 
@@ -244,6 +251,107 @@ class AiAgentHaPanel extends LitElement {
         animation: fadeIn 0.3s ease-out;
         box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
         word-wrap: break-word;
+      }
+      .message-container {
+        max-width: 100%;
+      }
+      .code-block-container {
+        position: relative;
+        margin: 12px 0;
+      }
+      /* Markdown content styling */
+      .message-content {
+        line-height: 1.6;
+        word-wrap: break-word;
+      }
+      .message-content h1, .message-content h2, .message-content h3 {
+        margin-top: 16px;
+        margin-bottom: 8px;
+        font-weight: 600;
+      }
+      .message-content h1 { font-size: 1.5em; }
+      .message-content h2 { font-size: 1.3em; }
+      .message-content h3 { font-size: 1.1em; }
+      .message-content p {
+        margin: 8px 0;
+      }
+      .message-content ul, .message-content ol {
+        margin: 8px 0;
+        padding-left: 24px;
+      }
+      .message-content li {
+        margin: 4px 0;
+      }
+      .message-content code {
+        background-color: #1e1e1e;
+        padding: 2px 6px;
+        border-radius: 4px;
+        font-family: 'Courier New', Courier, monospace;
+        font-size: 0.9em;
+        color: #e6e6e6;
+      }
+      .message-content pre {
+        background-color: #1e1e1e;
+        padding: 16px;
+        border-radius: 8px;
+        overflow-x: auto;
+        margin: 12px 0;
+        position: relative;
+      }
+      .message-content pre code {
+        background-color: transparent;
+        padding: 0;
+        color: #d4d4d4;
+      }
+      .message-content blockquote {
+        border-left: 4px solid #007acc;
+        margin: 12px 0;
+        padding: 8px 16px;
+        background-color: rgba(0, 122, 204, 0.1);
+        border-radius: 0 4px 4px 0;
+      }
+      .message-content a {
+        color: #4db6ac;
+        text-decoration: none;
+      }
+      .message-content a:hover {
+        text-decoration: underline;
+      }
+      .message-content table {
+        border-collapse: collapse;
+        width: 100%;
+        margin: 12px 0;
+      }
+      .message-content th, .message-content td {
+        border: 1px solid #444;
+        padding: 8px 12px;
+        text-align: left;
+      }
+      .message-content th {
+        background-color: #333;
+        font-weight: 600;
+      }
+      /* Copy button for code blocks */
+      .copy-code-btn {
+        position: absolute;
+        top: 8px;
+        right: 8px;
+        background-color: #333;
+        color: #ccc;
+        border: 1px solid #555;
+        border-radius: 4px;
+        padding: 4px 8px;
+        font-size: 0.8em;
+        cursor: pointer;
+        opacity: 0.7;
+        transition: opacity 0.2s;
+      }
+      .copy-code-btn:hover {
+        opacity: 1;
+      }
+      .copy-code-btn.copied {
+        background-color: #2e7d32;
+        color: white;
       }
       .user-message {
         background: var(--primary-color);
@@ -610,6 +718,71 @@ class AiAgentHaPanel extends LitElement {
         font-size: 14px;
         padding: 8px;
       }
+      
+      /* Image attachment button */
+      .image-btn {
+        background: none;
+        border: none;
+        cursor: pointer;
+        padding: 8px;
+        color: var(--primary-color);
+        border-radius: 4px;
+        transition: background-color 0.2s;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .image-btn:hover {
+        background-color: rgba(0, 122, 204, 0.1);
+      }
+      .image-btn ha-icon {
+        --mdc-icon-size: 24px;
+      }
+      
+      /* Attached images preview */
+      .attached-images {
+        display: flex;
+        gap: 8px;
+        padding: 8px;
+        overflow-x: auto;
+        border-bottom: 1px solid var(--divider-color);
+        margin-bottom: 4px;
+      }
+      .image-preview {
+        position: relative;
+        width: 80px;
+        height: 80px;
+        border-radius: 8px;
+        overflow: hidden;
+        border: 2px solid var(--primary-color);
+        flex-shrink: 0;
+      }
+      .image-preview img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+      .remove-image {
+        position: absolute;
+        top: 2px;
+        right: 2px;
+        background: rgba(0, 0, 0, 0.7);
+        color: white;
+        border: none;
+        border-radius: 50%;
+        width: 20px;
+        height: 20px;
+        font-size: 14px;
+        line-height: 1;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0;
+      }
+      .remove-image:hover {
+        background: rgba(255, 0, 0, 0.8);
+      }
     `;
   }
 
@@ -623,6 +796,9 @@ class AiAgentHaPanel extends LitElement {
     this._promptHistoryLoaded = false;
     this._showPredefinedPrompts = true;
     this._showPromptHistory = true;
+    this._attachedImages = [];
+    this._imageUploadEnabled = true;
+    this._maxImagesPerMessage = 3;
     this._predefinedPrompts = [
       "Build a new automation to turn off all lights at 10:00 PM every day",
       "What's the current temperature inside and outside?",
@@ -968,9 +1144,10 @@ class AiAgentHaPanel extends LitElement {
         <div class="chat-container">
           <div class="messages" id="messages">
             ${this._messages.map(msg => html`
-              <div class="message ${msg.type}-message">
-                ${msg.text}
-                ${msg.automation ? html`
+              <div class="message-container">
+                <div class="message ${msg.type}-message">
+                  ${this._renderMessageContent(msg)}
+                  ${msg.automation ? html`
                   <div class="automation-suggestion">
                     <div class="automation-title">${msg.automation.alias}</div>
                     <div class="automation-description">${msg.automation.description}</div>
@@ -1008,6 +1185,7 @@ class AiAgentHaPanel extends LitElement {
                     </div>
                   </div>
                 ` : ''}
+                </div>
               </div>
             `)}
             ${this._isLoading ? html`
@@ -1027,11 +1205,34 @@ class AiAgentHaPanel extends LitElement {
           </div>
           ${this._renderPromptsSection()}
           <div class="input-container">
+            <!-- Hidden file input for image upload -->
+            <input
+              type="file"
+              id="imageUpload"
+              accept="image/jpeg,image/png,image/webp,image/gif"
+              multiple
+              style="display: none;"
+              @change=${this._handleImageSelect}
+            ></input>
+            
             <div class="input-main">
+              <!-- Attached images preview -->
+              ${this._attachedImages.length > 0 ? html`
+                <div class="attached-images">
+                  ${this._attachedImages.map((img, index) => html`
+                    <div class="image-preview">
+                      <img src="data:image/jpeg;base64,${img.data}" alt="${img.original_name}" />
+                      <button class="remove-image" @click="${() => this._removeImage(index)}">
+                        ×
+                      </button>
+                    </div>
+                  `)}
+                </div>
+              ` : ''}
               <div class="input-wrapper">
                 <textarea
                   id="prompt"
-                  placeholder="Ask me anything about your Home Assistant..."
+                  placeholder="Ask me anything about your Home Assistant... (Images: ${this._attachedImages.length}/${this._maxImagesPerMessage})"
                   ?disabled=${this._isLoading}
                   @keydown=${this._handleKeyDown}
                   @input=${this._autoResize}
@@ -1057,6 +1258,11 @@ class AiAgentHaPanel extends LitElement {
                   `)}
                 </select>
               </div>
+              ${this._imageUploadEnabled ? html`
+                <button class="image-btn" @click="${this._triggerImageUpload}" title="Attach image">
+                  <ha-icon icon="mdi:image"></ha-icon>
+                </button>
+              ` : ''}
               <label class="thinking-toggle">
                 <input
                   type="checkbox"
@@ -1085,6 +1291,97 @@ class AiAgentHaPanel extends LitElement {
     if (messages) {
       messages.scrollTop = messages.scrollHeight;
     }
+  }
+
+  /**
+   * Check if text contains markdown that needs rendering
+   */
+  _hasMarkdown(text) {
+    if (!text || typeof text !== 'string') return false;
+    // Check for common markdown patterns
+    const markdownPatterns = [
+      /^#{1,6}\s/m,           // Headers
+      /^\s*[-*+]\s/m,         // Unordered lists
+      /^\s*\d+\.\s/m,         // Ordered lists
+      /^```/m,                // Code blocks
+      /^`[^`]+`/m,            // Inline code
+      /^> /m,                 // Blockquotes
+      /^\*\*.*\*\*/m,         // Bold
+      /^\*.*\*/m,             // Italic
+      /^---/m,                // Horizontal rules
+      /^\|.*\|/m              // Tables
+    ];
+    return markdownPatterns.some(pattern => pattern.test(text));
+  }
+
+  /**
+   * Format markdown text to HTML with sanitization
+   */
+  _formatMarkdown(text) {
+    if (!text || typeof text !== 'string') return '';
+    
+    try {
+      // Configure marked
+      marked.setOptions({
+        breaks: true,
+        gfm: true,
+        headerIds: false,
+        mangle: false
+      });
+      
+      // Parse markdown to HTML
+      let html = marked.parse(text);
+      
+      // Sanitize HTML to prevent XSS
+      html = DOMPurify.sanitize(html, {
+        ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'u', 's', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+                       'ul', 'ol', 'li', 'blockquote', 'pre', 'code', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'a', 'hr', 'img'],
+        ALLOWED_ATTR: ['href', 'src', 'alt', 'class', 'type', 'border', 'cellpadding', 'cellspacing']
+      });
+      
+      // Add copy buttons to code blocks
+      html = this._addCopyButtonsToCodeBlocks(html);
+      
+      return html;
+    } catch (error) {
+      console.error('Error formatting markdown:', error);
+      // Fallback to plain text
+      return text.replace(/\n/g, '<br>');
+    }
+  }
+
+  /**
+   * Add copy buttons to code blocks
+   */
+  _addCopyButtonsToCodeBlocks(html) {
+    // Find all pre>code blocks and wrap with copy button
+    return html.replace(/<pre><code([^>]*)>([\s\S]*?)<\/code><\/pre>/g, (match, attrs, code) => {
+      const uniqueId = 'code-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+      return `
+        <div class="code-block-container">
+          <pre>${code}</pre>
+          <button class="copy-code-btn" onclick="event.stopPropagation(); this.textContent='Copied!'; this.classList.add('copied'); setTimeout(() => { this.textContent='Copy'; this.classList.remove('copied'); }, 2000); navigator.clipboard.writeText(document.getElementById('${uniqueId}').textContent);">Copy</button>
+          <code id="${uniqueId}" style="display:none;">${code}</code>
+        </div>
+      `;
+    });
+  }
+
+  /**
+   * Render a message with appropriate formatting
+   */
+  _renderMessageContent(message) {
+    if (message.type === 'user') {
+      return html`<div class="message-content">${message.text}</div>`;
+    }
+    
+    // For assistant messages, check if markdown formatting is needed
+    if (this._hasMarkdown(message.text)) {
+      return html`<div class="message-content" innerHTML=${this._formatMarkdown(message.text)}></div>`;
+    }
+    
+    // Plain text with line breaks
+    return html`<div class="message-content">${message.text.replace(/\n/g, html`<br>`)}</div>`;
   }
 
   _autoResize(e) {
@@ -1121,16 +1418,26 @@ class AiAgentHaPanel extends LitElement {
   async _sendMessage() {
     const promptEl = this.shadowRoot.querySelector('#prompt');
     const prompt = promptEl.value.trim();
-    if (!prompt || this._isLoading) return;
+    
+    // Check if we have images but no text
+    if (!prompt && this._attachedImages.length === 0) return;
+    if (this._isLoading) return;
 
     console.debug("Sending message:", prompt);
     console.debug("Sending message with provider:", this._selectedProvider);
+    console.debug("Attached images:", this._attachedImages.length);
 
     // Add to history
-    await this._addToHistory(prompt);
+    await this._addToHistory(prompt || '[Image only]');
 
-    // Add user message
-    this._messages = [...this._messages, { type: 'user', text: prompt }];
+    // Add user message (with image indicators)
+    const userDisplayText = prompt || '📷 Image attached';
+    this._messages = [...this._messages, {
+      type: 'user',
+      text: userDisplayText,
+      images: this._attachedImages.map(img => img.data)
+    }];
+    
     promptEl.value = '';
     promptEl.style.height = 'auto';
     this._isLoading = true;
@@ -1159,11 +1466,19 @@ class AiAgentHaPanel extends LitElement {
 
     try {
       console.debug("Calling ai_agent_ha service");
-      await this.hass.callService('ai_agent_ha', 'query', {
-        prompt: prompt,
+      // Send images with prompt
+      const serviceData = {
+        prompt: prompt || 'Analyze this image',
         provider: this._selectedProvider,
         debug: this._showThinking
-      });
+      };
+      
+      if (this._attachedImages.length > 0) {
+        serviceData.images = this._attachedImages.map(img => img.data);
+        serviceData.mime_types = this._attachedImages.map(img => img.mime_type || 'image/jpeg');
+      }
+      
+      await this.hass.callService('ai_agent_ha', 'query', serviceData);
     } catch (error) {
       console.error("Error calling service:", error);
       this._clearLoadingState();
@@ -1173,6 +1488,116 @@ class AiAgentHaPanel extends LitElement {
         text: `Error: ${this._error}`
       }];
     }
+    
+    // Clear attached images after sending
+    this._attachedImages = [];
+    this.requestUpdate();
+  }
+
+  /**
+   * Trigger file input click
+   */
+  _triggerImageUpload() {
+    const input = this.shadowRoot.querySelector('#imageUpload');
+    if (input) {
+      input.click();
+    }
+  }
+
+  /**
+   * Handle image file selection
+   */
+  async _handleImageSelect(event) {
+    const files = event.target.files;
+    if (!files || files.length === 0) return;
+    
+    // Check limit
+    if (this._attachedImages.length + files.length > this._maxImagesPerMessage) {
+      alert(`Maximum ${this._maxImagesPerMessage} images per message`);
+      return;
+    }
+    
+    // Process each file
+    for (const file of files) {
+      try {
+        const compressed = await this._compressImage(file);
+        this._attachedImages = [...this._attachedImages, compressed];
+      } catch (error) {
+        console.error('Error processing image:', error);
+        alert(`Error processing ${file.name}: ${error.message}`);
+      }
+    }
+    
+    // Clear input
+    event.target.value = '';
+    this.requestUpdate();
+  }
+
+  /**
+   * Compress image client-side
+   */
+  async _compressImage(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          const ctx = canvas.getContext('2d');
+          
+          // Resize if too large
+          const maxDim = 2048;
+          let width = img.width;
+          let height = img.height;
+          
+          if (width > maxDim || height > maxDim) {
+            const ratio = Math.min(maxDim / width, maxDim / height);
+            width = Math.floor(width * ratio);
+            height = Math.floor(height * ratio);
+          }
+          
+          canvas.width = width;
+          canvas.height = height;
+          ctx.drawImage(img, 0, 0, width, height);
+          
+          // Compress to JPEG
+          canvas.toBlob(
+            (blob) => {
+              if (!blob) {
+                reject(new Error('Failed to compress image'));
+                return;
+              }
+              const reader2 = new FileReader();
+              reader2.onload = () => {
+                const result = reader2.result;
+                const base64Data = result.split(',')[1]; // Base64 only
+                resolve({
+                  data: base64Data,
+                  mime_type: 'image/jpeg',
+                  original_name: file.name,
+                  width: width,
+                  height: height
+                });
+              };
+              reader2.readAsDataURL(blob);
+            },
+            'image/jpeg',
+            0.8 // Quality
+          );
+        };
+        img.src = e.target.result;
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  }
+
+  /**
+   * Remove attached image
+   */
+  _removeImage(index) {
+    this._attachedImages = this._attachedImages.filter((_, i) => i !== index);
+    this.requestUpdate();
   }
 
   _clearLoadingState() {
