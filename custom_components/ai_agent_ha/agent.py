@@ -106,7 +106,7 @@ from .performance import (
     get_performance_monitor,
 )
 from .data_size_estimator import (
-    DataSizeEstimator,
+    DataSizeContextManager,
     DataType,
     FilterCategory,
     ContextLimits,
