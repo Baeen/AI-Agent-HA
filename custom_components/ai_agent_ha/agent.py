@@ -58,6 +58,15 @@ from .const import (
     CONF_MAX_IMAGE_SIZE,
     CONF_MAX_IMAGES_PER_MESSAGE,
     CONF_IMAGE_COMPRESSION_QUALITY,
+    # Data Size Management settings
+    CONF_MAX_CONTEXT_TOKENS,
+    CONF_ENABLE_DATA_SIZE_CHECKING,
+    CONF_DATA_SUMMARIZATION_ENABLED,
+    CONF_CONTEXT_SAFE_USAGE_THRESHOLD,
+    DEFAULT_MAX_CONTEXT_TOKENS,
+    DEFAULT_ENABLE_DATA_SIZE_CHECKING,
+    DEFAULT_DATA_SUMMARIZATION_ENABLED,
+    DEFAULT_CONTEXT_SAFE_USAGE_THRESHOLD,
 )
 from .yaml_review import YAMLReviewer
 from .permissions import (
@@ -95,6 +104,15 @@ from .performance import (
     get_data_cache,
     get_parallel_executor,
     get_performance_monitor,
+)
+from .data_size_estimator import (
+    DataSizeEstimator,
+    DataType,
+    FilterCategory,
+    ContextLimits,
+    check_and_handle_large_data,
+    apply_filter_to_data,
+    build_context_aware_response,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -1857,6 +1875,20 @@ class AiAgentHaAgent:
             "AUTOMATION CREATION:\n"
             "When creating automations, request entities first to know the entity IDs.\n"
             "For days, use: ['fri', 'mon', 'sat', 'sun', 'thu', 'tue', 'wed']\n\n"
+            
+            "CRITICAL: DATA SIZE MANAGEMENT AND CONTEXT OVERFLOW PREVENTION:\n"
+            "- If you request data and receive a response indicating the data is TOO LARGE, DO NOT retry the same request\n"
+            "- When data exceeds context limits, you will receive a SUMMARY with FILTERING SUGGESTIONS\n"
+            "- Use filtering options to retrieve specific subsets of data:\n"
+            "  * Filter by domain: get_entities_by_domain(domain='light') - get only lights\n"
+            "  * Filter by area: get_entities_by_area(area_id='area_123') - get only entities in an area\n"
+            "  * Filter by device_class: get_entities_by_device_class(device_class='temperature') - get temperature sensors\n"
+            "  * Filter by entity ID pattern: Use specific entity_ids like 'light.living_room'\n"
+            "- When asked to 'list all' configurations, respond with a summary instead of requesting full data\n"
+            "- For large datasets (automations, dashboards, scenes), suggest specific filtering before retrieval\n"
+            "- Example: Instead of 'get_automations()', suggest 'Here's a summary: X automations found. Which would you like to see?'\n"
+            "- NEVER repeatedly request the same large dataset - this will cause context overflow errors\n\n"
+            
             "RESPONSE FORMATS - You must ALWAYS respond with valid JSON:\n\n"
             "For automations:\n"
             "{\n"
@@ -2191,6 +2223,26 @@ class AiAgentHaAgent:
         self.data_cache = get_data_cache(enabled=True)
         self.parallel_executor = get_parallel_executor()
         self.performance_monitor = get_performance_monitor()
+        
+        # Initialize Data Size Manager for context overflow prevention
+        self.data_size_manager = DataSizeContextManager(
+            max_context_tokens=config.get(
+                CONF_MAX_CONTEXT_TOKENS,
+                DEFAULT_MAX_CONTEXT_TOKENS
+            ),
+            enable_data_size_checking=config.get(
+                CONF_ENABLE_DATA_SIZE_CHECKING,
+                DEFAULT_ENABLE_DATA_SIZE_CHECKING
+            ),
+            enable_summarization=config.get(
+                CONF_DATA_SUMMARIZATION_ENABLED,
+                DEFAULT_DATA_SUMMARIZATION_ENABLED
+            ),
+            safe_usage_threshold=config.get(
+                CONF_CONTEXT_SAFE_USAGE_THRESHOLD,
+                DEFAULT_CONTEXT_SAFE_USAGE_THRESHOLD
+            ),
+        )
 
         _LOGGER.debug(
             "AiAgentHaAgent initialized successfully with provider: %s, model: %s",

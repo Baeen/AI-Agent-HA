@@ -163,3 +163,15 @@ DEFAULT_SIMULATION_LOG_LEVEL = "info"
 # Default voice settings
 DEFAULT_VOICE_ENABLED = True
 DEFAULT_VOICE_TTS_ENABLED = True
+
+# Data Size Management and Context Overflow Prevention
+CONF_MAX_CONTEXT_TOKENS = "max_context_tokens"
+CONF_ENABLE_DATA_SIZE_CHECKING = "enable_data_size_checking"
+CONF_DATA_SUMMARIZATION_ENABLED = "data_summarization_enabled"
+CONF_CONTEXT_SAFE_USAGE_THRESHOLD = "context_safe_usage_threshold"
+
+# Default values for data size management
+DEFAULT_MAX_CONTEXT_TOKENS = 262144  # 256K - conservative default for llama.cpp
+DEFAULT_ENABLE_DATA_SIZE_CHECKING = True
+DEFAULT_DATA_SUMMARIZATION_ENABLED = True
+DEFAULT_CONTEXT_SAFE_USAGE_THRESHOLD = 0.7  # 70% of context window
