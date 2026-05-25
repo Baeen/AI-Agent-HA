@@ -459,3 +459,232 @@ class ChatHistoryManager:
 
         _LOGGER.debug("Added tag '%s' to conversation %s", tag, conversation_id)
         return True
+
+    async def import_conversation(
+        self,
+        data: Dict[str, Any],
+        conflict_resolution: str = "rename",
+    ) -> Optional[str]:
+        """Import a conversation from exported data.
+
+        Args:
+            data: Conversation data with 'metadata' and 'messages' keys.
+            conflict_resolution: How to handle conflicts - 'rename', 'overwrite', or 'skip'.
+
+        Returns:
+            Conversation ID if imported, None if skipped or failed.
+        """
+        await self._ensure_loaded()
+
+        # Validate data structure
+        if "metadata" not in data and "messages" not in data:
+            _LOGGER.error("Invalid conversation data structure")
+            return None
+
+        metadata_dict = data.get("metadata", {})
+        messages = data.get("messages", [])
+
+        # Create metadata if not provided
+        if not metadata_dict:
+            metadata_dict = ConversationMetadata.from_messages(messages).to_dict()
+
+        metadata = ConversationMetadata.from_dict(metadata_dict)
+
+        # Check for conflicts
+        existing_id = None
+        for conv_id, conv_data in self._data.items():
+            existing_meta = ConversationMetadata.from_dict(conv_data.get("metadata", {}))
+            if existing_meta.created_at == metadata.created_at and existing_meta.name == metadata.name:
+                existing_id = conv_id
+                break
+
+        if existing_id:
+            if conflict_resolution == "skip":
+                _LOGGER.info("Skipping import - conversation already exists: %s", metadata.name)
+                return None
+            elif conflict_resolution == "overwrite":
+                _LOGGER.info("Overwriting existing conversation: %s", metadata.name)
+                del self._data[existing_id]
+            else:  # rename
+                # Generate new ID
+                metadata.conversation_id = str(uuid4())
+                metadata.created_at = datetime.utcnow().isoformat()
+                metadata.updated_at = datetime.utcnow().isoformat()
+
+        # Ensure conversation has an ID
+        if not metadata.conversation_id:
+            metadata.conversation_id = str(uuid4())
+
+        # Store the conversation
+        self._data[metadata.conversation_id] = {
+            "metadata": metadata.to_dict(),
+            "messages": messages,
+        }
+
+        await self._save_data()
+        _LOGGER.info("Imported conversation: %s (%d messages)", metadata.name, len(messages))
+        return metadata.conversation_id
+
+    async def export_conversation_as_markdown(self, conversation_id: str) -> Optional[str]:
+        """Export a conversation as formatted Markdown.
+
+        Args:
+            conversation_id: The conversation identifier.
+
+        Returns:
+            Markdown string or None if not found.
+        """
+        await self._ensure_loaded()
+        if conversation_id not in self._data:
+            return None
+
+        conv_data = self._data[conversation_id]
+        metadata = ConversationMetadata.from_dict(conv_data.get("metadata", {}))
+        messages = conv_data.get("messages", [])
+
+        lines = [
+            f"# {metadata.name}",
+            "",
+            f"**Conversation ID:** {conversation_id}",
+            f"**Created:** {metadata.created_at}",
+            f"**Updated:** {metadata.updated_at}",
+            f"**Messages:** {metadata.message_count}",
+        ]
+
+        if metadata.tags:
+            lines.append(f"**Tags:** {', '.join(metadata.tags)}")
+
+        lines.extend(["", "---", ""])
+
+        for msg in messages:
+            role = msg.get("type", "unknown")
+            text = msg.get("text", "")
+            timestamp = msg.get("timestamp", "")
+
+            if role == "user":
+                lines.append(f"### 👤 User")
+            elif role == "assistant":
+                lines.append(f"### 🤖 Assistant")
+            elif role == "system":
+                lines.append(f"### ⚙️ System")
+            else:
+                lines.append(f"### ❓ {role.capitalize()}")
+
+            if timestamp:
+                lines.append(f"**Time:** {timestamp}")
+
+            lines.append("")
+            lines.append(text)
+            lines.append("")
+
+        return "\n".join(lines)
+
+    async def export_conversation_as_html(self, conversation_id: str) -> Optional[str]:
+        """Export a conversation as formatted HTML.
+
+        Args:
+            conversation_id: The conversation identifier.
+
+        Returns:
+            HTML string or None if not found.
+        """
+        await self._ensure_loaded()
+        if conversation_id not in self._data:
+            return None
+
+        conv_data = self._data[conversation_id]
+        metadata = ConversationMetadata.from_dict(conv_data.get("metadata", {}))
+        messages = conv_data.get("messages", [])
+
+        html_parts = [
+            "<!DOCTYPE html>",
+            "<html lang=\"en\">",
+            "<head>",
+            f"  <meta charset=\"UTF-8\">",
+            f"  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">",
+            f"  <title>{metadata.name}</title>",
+            "  <style>",
+            "    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; background: #f5f5f5; }",
+            "    .container { background: white; border-radius: 8px; padding: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }",
+            "    h1 { color: #333; border-bottom: 2px solid #007ba7; padding-bottom: 10px; }",
+            "    .meta { color: #666; font-size: 0.9em; margin-bottom: 20px; }",
+            "    .message { margin-bottom: 20px; padding: 15px; border-radius: 8px; }",
+            "    .user { background: #e3f2fd; }",
+            "    .assistant { background: #f3e5f5; }",
+            "    .system { background: #fff3e0; }",
+            "    .role { font-weight: bold; margin-bottom: 5px; }",
+            "    .timestamp { color: #999; font-size: 0.8em; }",
+            "    .content { white-space: pre-wrap; }",
+            "    .tags { margin-top: 20px; }",
+            "    .tag { background: #007ba7; color: white; padding: 2px 8px; border-radius: 4px; font-size: 0.8em; margin-right: 5px; }",
+            "  </style>",
+            "</head>",
+            "<body>",
+            "  <div class=\"container\">",
+            f"    <h1>{metadata.name}</h1>",
+            f"    <div class=\"meta\">",
+            f"      <p>Conversation ID: {conversation_id}</p>",
+            f"      <p>Created: {metadata.created_at}</p>",
+            f"      <p>Updated: {metadata.updated_at}</p>",
+            f"      <p>Messages: {metadata.message_count}</p>",
+            "    </div>",
+            "    <hr>",
+        ]
+
+        for msg in messages:
+            role = msg.get("type", "unknown")
+            text = msg.get("text", "")
+            timestamp = msg.get("timestamp", "")
+
+            html_parts.extend([
+                f'    <div class="message {role}">',
+                f'      <div class="role">{role.capitalize()}</div>',
+            ])
+
+            if timestamp:
+                html_parts.append(f'      <div class="timestamp">{timestamp}</div>')
+
+            html_parts.extend([
+                '      <div class="content">',
+                f"        {text}",
+                "      </div>",
+                "    </div>",
+            ])
+
+        if metadata.tags:
+            html_parts.append('    <div class="tags">')
+            for tag in metadata.tags:
+                html_parts.append(f'      <span class="tag">{tag}</span>')
+            html_parts.append("    </div>")
+
+        html_parts.extend([
+            "  </div>",
+            "</body>",
+            "</html>",
+        ])
+
+        return "\n".join(html_parts)
+
+    async def share_conversation(
+        self,
+        conversation_id: str,
+        format_type: str = "markdown",
+    ) -> Optional[str]:
+        """Share a conversation in the specified format.
+
+        Args:
+            conversation_id: The conversation identifier.
+            format_type: Export format - 'markdown', 'html', or 'json'.
+
+        Returns:
+            Formatted string or None if not found.
+        """
+        if format_type == "markdown":
+            return await self.export_conversation_as_markdown(conversation_id)
+        elif format_type == "html":
+            return await self.export_conversation_as_html(conversation_id)
+        elif format_type == "json":
+            return await self.export_conversation(conversation_id)
+        else:
+            _LOGGER.error("Unknown share format: %s", format_type)
+            return None

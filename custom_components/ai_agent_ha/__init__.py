@@ -28,6 +28,11 @@ from .const import (
 from .chat_history import ChatHistoryManager
 from .audit_log import AuditLogManager, RetentionPolicy
 from .voice_handler import VoiceHandler, VoiceQueryResult
+from .scheduled_tasks import ScheduledTaskManager, TaskCreationResult
+from .health_check import HealthCheckManager, HealthReport
+from .task_queue import AsyncTaskQueue, TaskStatus
+from .performance_dashboard import PerformanceDashboardProvider
+from .automation_templates import AutomationTemplatesLibrary
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -334,6 +339,86 @@ SEARCH_INTEGRATIONS_SCHEMA = vol.Schema(
     }
 )
 
+# Scheduled Tasks schemas
+CREATE_REMINDER_SCHEMA = vol.Schema(
+    {
+        vol.Required("natural_language"): cv.string,
+        vol.Optional("user_id"): cv.string,
+    }
+)
+LIST_TASKS_SCHEMA = vol.Schema(
+    {
+        vol.Optional("status"): cv.string,
+        vol.Optional("priority"): cv.string,
+        vol.Optional("tags"): [cv.string],
+    }
+)
+CANCEL_TASK_SCHEMA = vol.Schema(
+    {
+        vol.Required("task_id"): cv.string,
+    }
+)
+
+# Health Check schemas
+HEALTH_CHECK_SCHEMA = vol.Schema({})
+DIAGNOSTICS_SCHEMA = vol.Schema({})
+
+# Task Queue schemas
+TASK_STATUS_SCHEMA = vol.Schema(
+    {
+        vol.Required("task_id"): cv.string,
+    }
+)
+TASK_CANCEL_SCHEMA = vol.Schema(
+    {
+        vol.Required("task_id"): cv.string,
+    }
+)
+LIST_QUEUED_TASKS_SCHEMA = vol.Schema({})
+
+# Performance Dashboard schemas
+PERFORMANCE_DASHBOARD_SCHEMA = vol.Schema(
+    {
+        vol.Optional("dashboard_type", default="performance"): vol.In(
+            ["performance", "sensors", "yaml"]
+        ),
+    }
+)
+
+# Automation Templates schemas
+LIST_TEMPLATES_SCHEMA = vol.Schema(
+    {
+        vol.Optional("category"): cv.string,
+        vol.Optional("tags"): [cv.string],
+        vol.Optional("difficulty"): cv.string,
+    }
+)
+SEARCH_TEMPLATES_SCHEMA = vol.Schema(
+    {
+        vol.Required("query"): cv.string,
+    }
+)
+TEMPLATE_DETAIL_SCHEMA = vol.Schema(
+    {
+        vol.Required("template_id"): cv.string,
+        vol.Optional("variables"): dict,
+    }
+)
+
+# Chat History schemas (import/export/share)
+IMPORT_CONVERSATION_SCHEMA = vol.Schema(
+    {
+        vol.Required("data"): dict,
+        vol.Optional("conflict_resolution", default="rename"): vol.In(["rename", "overwrite", "skip"]),
+    }
+)
+SHARE_CONVERSATION_SCHEMA = vol.Schema(
+    {
+        vol.Required("conversation_id"): cv.string,
+        vol.Optional("format", default="markdown"): vol.In(["markdown", "html", "json"]),
+    }
+)
+
 # Chat History schemas
 GET_CONVERSATIONS_SCHEMA = vol.Schema({})
 DELETE_CONVERSATION_SCHEMA = vol.Schema(
@@ -583,6 +668,42 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         if "voice_handler" not in hass.data[DOMAIN]:
             hass.data[DOMAIN]["voice_handler"] = VoiceHandler(hass, hass.data[DOMAIN]["agents"][provider])
             _LOGGER.info("Voice handler initialized successfully")
+
+        # A6 - Initialize Scheduled Task Manager
+        if "task_manager" not in hass.data[DOMAIN]:
+            from .scheduled_tasks import ScheduledTaskManager
+            hass.data[DOMAIN]["task_manager"] = ScheduledTaskManager(hass)
+            _LOGGER.info("Scheduled task manager initialized successfully")
+
+        # C4 - Initialize Health Check Manager
+        if "health_manager" not in hass.data[DOMAIN]:
+            from .health_check import HealthCheckManager
+            hass.data[DOMAIN]["health_manager"] = HealthCheckManager(hass)
+            _LOGGER.info("Health check manager initialized successfully")
+
+        # B4 - Initialize Async Task Queue
+        if "task_queue" not in hass.data[DOMAIN]:
+            from .task_queue import AsyncTaskQueue
+            hass.data[DOMAIN]["task_queue"] = AsyncTaskQueue(hass)
+            _LOGGER.info("Async task queue initialized successfully")
+
+        # A7 - Initialize Performance Dashboard Provider
+        if "dashboard_provider" not in hass.data[DOMAIN]:
+            from .performance_dashboard import PerformanceDashboardProvider
+            hass.data[DOMAIN]["dashboard_provider"] = PerformanceDashboardProvider()
+            _LOGGER.info("Performance dashboard provider initialized successfully")
+
+        # A8 - Initialize Automation Templates Library
+        if "templates_library" not in hass.data[DOMAIN]:
+            from .automation_templates import AutomationTemplatesLibrary
+            hass.data[DOMAIN]["templates_library"] = AutomationTemplatesLibrary()
+            _LOGGER.info("Automation templates library initialized successfully")
+
+        # E5 - Initialize Encryption Manager
+        if "encryption_manager" not in hass.data[DOMAIN]:
+            from .encryption import EncryptionManager
+            hass.data[DOMAIN]["encryption_manager"] = EncryptionManager(hass)
+            _LOGGER.info("Encryption manager initialized successfully")
 
         _LOGGER.info("Successfully set up AI Agent HA for provider: %s", provider)
 
@@ -2809,6 +2930,298 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             _LOGGER.error("Error clearing old audit logs: %s", str(e))
             return {"success": False, "error": str(e)}
 
+    # === A6 - Scheduled Tasks/Reminders service handlers ===
+    async def async_handle_create_reminder(call):
+        """Handle the create_reminder service call."""
+        try:
+            task_manager = hass.data[DOMAIN].get("task_manager")
+            if not task_manager:
+                return {"success": False, "error": "Task manager not initialized"}
+
+            natural_language = call.data.get("natural_language")
+            user_id = call.data.get("user_id", "")
+
+            result = await task_manager.create_task_from_nl(
+                natural_language=natural_language,
+                user_id=user_id,
+            )
+            return result.to_dict()
+
+        except Exception as e:
+            _LOGGER.exception("Error creating reminder: %s", str(e))
+            return {"success": False, "error": str(e)}
+
+    async def async_handle_list_tasks(call):
+        """Handle the list_tasks service call."""
+        try:
+            task_manager = hass.data[DOMAIN].get("task_manager")
+            if not task_manager:
+                return {"success": False, "error": "Task manager not initialized"}
+
+            status = call.data.get("status")
+            priority = call.data.get("priority")
+            tags = call.data.get("tags", [])
+
+            tasks = await task_manager.list_tasks(
+                status=status,
+                priority=priority,
+                tags=tags,
+            )
+            return {"success": True, "tasks": [t.to_dict() for t in tasks]}
+
+        except Exception as e:
+            _LOGGER.exception("Error listing tasks: %s", str(e))
+            return {"success": False, "error": str(e)}
+
+    async def async_handle_cancel_task(call):
+        """Handle the cancel_task service call."""
+        try:
+            task_manager = hass.data[DOMAIN].get("task_manager")
+            if not task_manager:
+                return {"success": False, "error": "Task manager not initialized"}
+
+            task_id = call.data.get("task_id")
+            result = await task_manager.cancel_task(task_id)
+            return {"success": result, "task_id": task_id}
+
+        except Exception as e:
+            _LOGGER.exception("Error cancelling task: %s", str(e))
+            return {"success": False, "error": str(e)}
+
+    # === C4 - Health Check service handlers ===
+    async def async_handle_health_check(call):
+        """Handle the health_check service call."""
+        try:
+            health_manager = hass.data[DOMAIN].get("health_manager")
+            if not health_manager:
+                return {"success": False, "error": "Health manager not initialized"}
+
+            report = await health_manager.run_full_health_check()
+            return report.to_dict()
+
+        except Exception as e:
+            _LOGGER.exception("Error running health check: %s", str(e))
+            return {"success": False, "error": str(e)}
+
+    async def async_handle_diagnostics(call):
+        """Handle the diagnostics service call."""
+        try:
+            health_manager = hass.data[DOMAIN].get("health_manager")
+            if not health_manager:
+                return {"success": False, "error": "Health manager not initialized"}
+
+            diagnostics = await health_manager.get_diagnostics()
+            return diagnostics
+
+        except Exception as e:
+            _LOGGER.exception("Error getting diagnostics: %s", str(e))
+            return {"success": False, "error": str(e)}
+
+    # === B4 - Async Task Queue service handlers ===
+    async def async_handle_task_status(call):
+        """Handle the task_status service call."""
+        try:
+            task_queue = hass.data[DOMAIN].get("task_queue")
+            if not task_queue:
+                return {"success": False, "error": "Task queue not initialized"}
+
+            task_id = call.data.get("task_id")
+            status = await task_queue.get_task_status(task_id)
+            return {"success": True, "status": status}
+
+        except Exception as e:
+            _LOGGER.exception("Error getting task status: %s", str(e))
+            return {"success": False, "error": str(e)}
+
+    async def async_handle_cancel_queued_task(call):
+        """Handle the cancel_queued_task service call."""
+        try:
+            task_queue = hass.data[DOMAIN].get("task_queue")
+            if not task_queue:
+                return {"success": False, "error": "Task queue not initialized"}
+
+            task_id = call.data.get("task_id")
+            result = await task_queue.cancel_task(task_id)
+            return {"success": result, "task_id": task_id}
+
+        except Exception as e:
+            _LOGGER.exception("Error cancelling queued task: %s", str(e))
+            return {"success": False, "error": str(e)}
+
+    async def async_handle_list_queued_tasks(call):
+        """Handle the list_queued_tasks service call."""
+        try:
+            task_queue = hass.data[DOMAIN].get("task_queue")
+            if not task_queue:
+                return {"success": False, "error": "Task queue not initialized"}
+
+            status = call.data.get("status")
+            tasks = await task_queue.list_tasks(status=status)
+            return {"success": True, "tasks": tasks}
+
+        except Exception as e:
+            _LOGGER.exception("Error listing queued tasks: %s", str(e))
+            return {"success": False, "error": str(e)}
+
+    # === A7 - Performance Dashboard service handlers ===
+    async def async_handle_get_performance_dashboard(call):
+        """Handle the get_performance_dashboard service call."""
+        try:
+            dashboard_provider = hass.data[DOMAIN].get("dashboard_provider")
+            if not dashboard_provider:
+                return {"success": False, "error": "Dashboard provider not initialized"}
+
+            dashboard_type = call.data.get("dashboard_type", "performance")
+            template = dashboard_provider.get_dashboard_template(dashboard_type)
+
+            if dashboard_type == "yaml":
+                return {
+                    "success": True,
+                    "content": dashboard_provider.get_dashboard_yaml(),
+                    "format": "yaml",
+                }
+            elif dashboard_type == "sensors":
+                return {
+                    "success": True,
+                    "content": dashboard_provider.get_sensor_configuration(),
+                    "format": "yaml",
+                }
+            else:
+                return {
+                    "success": True,
+                    "template": template,
+                    "format": "json",
+                }
+
+        except Exception as e:
+            _LOGGER.exception("Error getting performance dashboard: %s", str(e))
+            return {"success": False, "error": str(e)}
+
+    # === A8 - Automation Templates service handlers ===
+    async def async_handle_list_templates(call):
+        """Handle the list_templates service call."""
+        try:
+            templates_lib = hass.data[DOMAIN].get("templates_library")
+            if not templates_lib:
+                return {"success": False, "error": "Templates library not initialized"}
+
+            category = call.data.get("category")
+            tags = call.data.get("tags", [])
+            difficulty = call.data.get("difficulty")
+
+            templates = templates_lib.list_templates(
+                category=category,
+                tags=tags,
+                difficulty=difficulty,
+            )
+            return {
+                "success": True,
+                "templates": [t.to_dict() for t in templates],
+                "total": len(templates),
+            }
+
+        except Exception as e:
+            _LOGGER.exception("Error listing templates: %s", str(e))
+            return {"success": False, "error": str(e)}
+
+    async def async_handle_search_templates(call):
+        """Handle the search_templates service call."""
+        try:
+            templates_lib = hass.data[DOMAIN].get("templates_library")
+            if not templates_lib:
+                return {"success": False, "error": "Templates library not initialized"}
+
+            query = call.data.get("query")
+            templates = templates_lib.search_templates(query)
+            return {
+                "success": True,
+                "templates": [t.to_dict() for t in templates],
+                "total": len(templates),
+            }
+
+        except Exception as e:
+            _LOGGER.exception("Error searching templates: %s", str(e))
+            return {"success": False, "error": str(e)}
+
+    async def async_handle_get_template(call):
+        """Handle the get_template service call."""
+        try:
+            templates_lib = hass.data[DOMAIN].get("templates_library")
+            if not templates_lib:
+                return {"success": False, "error": "Templates library not initialized"}
+
+            template_id = call.data.get("template_id")
+            variables = call.data.get("variables", {})
+
+            template = templates_lib.get_template(template_id)
+            if not template:
+                return {"success": False, "error": f"Template {template_id} not found"}
+
+            yaml_output = templates_lib.generate_yaml_from_template(template_id, variables)
+
+            return {
+                "success": True,
+                "template": template.to_dict(),
+                "yaml_output": yaml_output or template.yaml_output,
+            }
+
+        except Exception as e:
+            _LOGGER.exception("Error getting template: %s", str(e))
+            return {"success": False, "error": str(e)}
+
+    # === C6/D2 - Conversation Import/Share service handlers ===
+    async def async_handle_import_conversation(call):
+        """Handle the import_conversation service call."""
+        try:
+            chat_manager = hass.data[DOMAIN].get("chat_manager")
+            if not chat_manager:
+                return {"success": False, "error": "Chat manager not initialized"}
+
+            data = call.data.get("data")
+            conflict_resolution = call.data.get("conflict_resolution", "rename")
+
+            conversation_id = await chat_manager.import_conversation(
+                data=data,
+                conflict_resolution=conflict_resolution,
+            )
+            return {
+                "success": conversation_id is not None,
+                "conversation_id": conversation_id,
+            }
+
+        except Exception as e:
+            _LOGGER.exception("Error importing conversation: %s", str(e))
+            return {"success": False, "error": str(e)}
+
+    async def async_handle_share_conversation(call):
+        """Handle the share_conversation service call."""
+        try:
+            chat_manager = hass.data[DOMAIN].get("chat_manager")
+            if not chat_manager:
+                return {"success": False, "error": "Chat manager not initialized"}
+
+            conversation_id = call.data.get("conversation_id")
+            format_type = call.data.get("format", "markdown")
+
+            content = await chat_manager.share_conversation(
+                conversation_id=conversation_id,
+                format_type=format_type,
+            )
+
+            if content is None:
+                return {"success": False, "error": "Conversation not found"}
+
+            return {
+                "success": True,
+                "conversation_id": conversation_id,
+                "format": format_type,
+                "content": content,
+            }
+
+        except Exception as e:
+            _LOGGER.exception("Error sharing conversation: %s", str(e))
+            return {"success": False, "error": str(e)}
+
     # Automation Testing/Simulation Mode (A3) service handlers
     async def async_handle_test_automation(call):
         """Handle the test_automation service call."""
@@ -2931,6 +3344,32 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.services.async_register(DOMAIN, "test_automation", async_handle_test_automation, schema=TEST_AUTOMATION_SCHEMA)
     hass.services.async_register(DOMAIN, "simulate_action", async_handle_simulate_action, schema=SIMULATE_ACTION_SCHEMA)
     hass.services.async_register(DOMAIN, "test_automation_from_nl", async_handle_test_automation_from_nl, schema=TEST_AUTOMATION_FROM_NL_SCHEMA)
+
+    # A6 - Scheduled Tasks/Reminders
+    hass.services.async_register(DOMAIN, "create_reminder", async_handle_create_reminder, schema=CREATE_REMINDER_SCHEMA)
+    hass.services.async_register(DOMAIN, "list_tasks", async_handle_list_tasks, schema=LIST_TASKS_SCHEMA)
+    hass.services.async_register(DOMAIN, "cancel_task", async_handle_cancel_task, schema=CANCEL_TASK_SCHEMA)
+
+    # C4 - Health Check and Monitoring
+    hass.services.async_register(DOMAIN, "health_check", async_handle_health_check, schema=HEALTH_CHECK_SCHEMA)
+    hass.services.async_register(DOMAIN, "get_diagnostics", async_handle_diagnostics, schema=DIAGNOSTICS_SCHEMA)
+
+    # B4 - Async Task Queue for Long Operations
+    hass.services.async_register(DOMAIN, "task_status", async_handle_task_status, schema=TASK_STATUS_SCHEMA)
+    hass.services.async_register(DOMAIN, "cancel_queued_task", async_handle_cancel_queued_task, schema=TASK_CANCEL_SCHEMA)
+    hass.services.async_register(DOMAIN, "list_queued_tasks", async_handle_list_queued_tasks, schema=LIST_QUEUED_TASKS_SCHEMA)
+
+    # A7 - Performance Monitoring Dashboard
+    hass.services.async_register(DOMAIN, "get_performance_dashboard", async_handle_get_performance_dashboard, schema=PERFORMANCE_DASHBOARD_SCHEMA)
+
+    # A8 - Automation Templates Library
+    hass.services.async_register(DOMAIN, "list_templates", async_handle_list_templates, schema=LIST_TEMPLATES_SCHEMA)
+    hass.services.async_register(DOMAIN, "search_templates", async_handle_search_templates, schema=SEARCH_TEMPLATES_SCHEMA)
+    hass.services.async_register(DOMAIN, "get_template", async_handle_get_template, schema=TEMPLATE_DETAIL_SCHEMA)
+
+    # C6/D2 - Conversation Backup/Restore and Sharing
+    hass.services.async_register(DOMAIN, "import_conversation", async_handle_import_conversation, schema=IMPORT_CONVERSATION_SCHEMA)
+    hass.services.async_register(DOMAIN, "share_conversation", async_handle_share_conversation, schema=SHARE_CONVERSATION_SCHEMA)
 
     # Register static path for frontend
     await hass.http.async_register_static_paths(
@@ -3058,6 +3497,26 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.services.async_remove(DOMAIN, "export_audit_logs")
     hass.services.async_remove(DOMAIN, "clear_audit_logs")
     hass.services.async_remove(DOMAIN, "clear_old_audit_logs")
+    # A6 - Remove Scheduled Tasks/Reminders services
+    hass.services.async_remove(DOMAIN, "create_reminder")
+    hass.services.async_remove(DOMAIN, "list_tasks")
+    hass.services.async_remove(DOMAIN, "cancel_task")
+    # C4 - Remove Health Check services
+    hass.services.async_remove(DOMAIN, "health_check")
+    hass.services.async_remove(DOMAIN, "get_diagnostics")
+    # B4 - Remove Task Queue services
+    hass.services.async_remove(DOMAIN, "task_status")
+    hass.services.async_remove(DOMAIN, "cancel_queued_task")
+    hass.services.async_remove(DOMAIN, "list_queued_tasks")
+    # A7 - Remove Performance Dashboard services
+    hass.services.async_remove(DOMAIN, "get_performance_dashboard")
+    # A8 - Remove Automation Templates services
+    hass.services.async_remove(DOMAIN, "list_templates")
+    hass.services.async_remove(DOMAIN, "search_templates")
+    hass.services.async_remove(DOMAIN, "get_template")
+    # C6/D2 - Remove Conversation Import/Share services
+    hass.services.async_remove(DOMAIN, "import_conversation")
+    hass.services.async_remove(DOMAIN, "share_conversation")
     # Remove data
     if DOMAIN in hass.data:
         hass.data.pop(DOMAIN)
